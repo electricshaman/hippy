@@ -1,16 +1,39 @@
 defmodule Hippy.Operation.PrintJob do
-  defstruct charset: "utf-8",
-            natural_language: "en",
-            printer_uri: nil,
-            job_name: "Default Name",
-            document_data: nil
+  @moduledoc """
+  Represents a request to print a document using a printer on the IPP server.
+  """
+
+  @def_charset "utf-8"
+  @def_lang "en"
+  @def_job_name "Untitled Job"
+
+  @enforce_keys [:printer_uri, :document]
+
+  defstruct printer_uri: nil,
+            document: nil,
+            charset: @def_charset,
+            language: @def_lang,
+            job_name: @def_job_name
+
+  def new(printer_uri, document, opts \\ []) do
+    %__MODULE__{
+      printer_uri: printer_uri,
+      document: document,
+      job_name: Keyword.get(opts, :job_name, @def_job_name),
+      charset: Keyword.get(opts, :charset, @def_charset),
+      language: Keyword.get(opts, :language, @def_lang)
+    }
+  end
 end
 
 defimpl Hippy.OperationRequest, for: Hippy.Operation.PrintJob do
   alias Hippy.{Operation, Request}
 
   def build_request(op) do
-    ipp_printer_uri = String.replace(op.printer_uri, "http://", "ipp://")
+    target =
+      URI.parse(op.printer_uri)
+      |> Map.put(:scheme, "ipp")
+      |> to_string()
 
     %Request{
       # Should request_id be a parameter to build_request?
@@ -18,11 +41,11 @@ defimpl Hippy.OperationRequest, for: Hippy.Operation.PrintJob do
       operation_id: Operation.print_job(),
       operation_attributes: [
         {:charset, "attributes-charset", op.charset},
-        {:natural_language, "attributes-natural-language", op.natural_language},
-        {:uri, "printer-uri", ipp_printer_uri},
+        {:natural_language, "attributes-natural-language", op.language},
+        {:uri, "printer-uri", target},
         {:name_without_language, "job-name", op.job_name}
       ],
-      data: op.document_data
+      data: op.document
     }
   end
 end
