@@ -26,7 +26,7 @@ defmodule Hippy.Operation.PrintJob do
   end
 end
 
-defimpl Hippy.OperationRequest, for: Hippy.Operation.PrintJob do
+defimpl Hippy.Operation, for: Hippy.Operation.PrintJob do
   def build_request(op) do
     target =
       URI.parse(op.printer_uri)

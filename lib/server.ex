@@ -16,7 +16,7 @@ defmodule Hippy.Server do
   end
 
   def send_operation(op, endpoint) do
-    Hippy.OperationRequest.build_request(op)
+    Hippy.Operation.build_request(op)
     |> send_request(endpoint)
   end
 

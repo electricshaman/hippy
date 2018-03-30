@@ -34,7 +34,7 @@ defmodule Hippy.Operation.GetJobs do
   end
 end
 
-defimpl Hippy.OperationRequest, for: Hippy.Operation.GetJobs do
+defimpl Hippy.Operation, for: Hippy.Operation.GetJobs do
   def build_request(op) do
     target =
       URI.parse(op.printer_uri)
