@@ -3,7 +3,8 @@ defmodule Hippy.Encoder do
   Functions for handling binary encoding of an IPP request.
   """
 
-  alias Hippy.{Request, DelimiterTag, ValueTag}
+  alias Hippy.Request
+  alias Hippy.Protocol.{DelimiterTag, ValueTag}
 
   @doc "Encodes an IPP request into its binary form."
   def encode(%Request{} = req) do

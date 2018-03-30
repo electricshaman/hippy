@@ -1,4 +1,4 @@
-defmodule Hippy.Enum do
+defmodule Hippy.Protocol.Enum do
   defmacro __using__(map) do
     generate(map)
   end

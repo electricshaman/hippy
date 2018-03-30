@@ -3,7 +3,8 @@ defmodule Hippy.Decoder do
   Functions for handling binary decoding of an IPP response.
   """
 
-  alias Hippy.{Response, JobState}
+  alias Hippy.Response
+  alias Hippy.Protocol.{JobState, StatusCode}
 
   @doc "Decodes an IPP response from its binary into a response struct."
   def decode(bin) do
@@ -23,7 +24,7 @@ defmodule Hippy.Decoder do
 
   defp status_code({res, bin}) do
     <<status_code::16-signed, rest::binary>> = bin
-    status = Hippy.StatusCode.decode!(status_code)
+    status = StatusCode.decode!(status_code)
     {%{res | status_code: status}, rest}
   end
 

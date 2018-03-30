@@ -1,5 +1,5 @@
-defmodule Hippy.Operation do
-  use Hippy.Enum, %{
+defmodule Hippy.Protocol.Operation do
+  use Hippy.Protocol.Enum, %{
     print_job: 0x0002,
     print_uri: 0x0003,
     validate_job: 0x0004,

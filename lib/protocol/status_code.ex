@@ -1,5 +1,5 @@
-defmodule Hippy.StatusCode do
-  use Hippy.Enum, %{
+defmodule Hippy.Protocol.StatusCode do
+  use Hippy.Protocol.Enum, %{
     successful_ok: 0x0000,
     successful_ok_ignored_or_substituted_attributes: 0x0001,
     successful_ok_conflicting_attributes: 0x0002,

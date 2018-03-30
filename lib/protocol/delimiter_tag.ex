@@ -1,5 +1,5 @@
-defmodule Hippy.DelimiterTag do
-  use Hippy.Enum, %{
+defmodule Hippy.Protocol.DelimiterTag do
+  use Hippy.Protocol.Enum, %{
     operation_attributes: 0x01,
     job_attributes: 0x02,
     end_of_attributes: 0x03,
