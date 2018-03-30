@@ -1,18 +1,8 @@
 defmodule Hippy do
   @moduledoc """
-  Documentation for Hippy.
+  IPP client API
   """
 
-  @doc """
-  Hello world.
-
-  ## Examples
-
-      iex> Hippy.hello
-      :world
-
-  """
-  def hello do
-    :world
-  end
+  defdelegate send_operation(op), to: Hippy.Server
+  defdelegate send_operation(op, endpoint), to: Hippy.Server
 end
