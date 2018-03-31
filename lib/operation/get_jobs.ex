@@ -36,10 +36,7 @@ end
 
 defimpl Hippy.Operation, for: Hippy.Operation.GetJobs do
   def build_request(op) do
-    target =
-      URI.parse(op.printer_uri)
-      |> Map.put(:scheme, "ipp")
-      |> to_string()
+    target = String.replace(op.printer_uri, ~r/^http(s)?/, "ipp")
 
     %Hippy.Request{
       # Should request_id be a parameter to build_request?
