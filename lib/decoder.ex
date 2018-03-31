@@ -107,6 +107,17 @@ defmodule Hippy.Decoder do
          group,
          res,
          acc,
+         <<0x49, name_len::16-signed, name::size(name_len)-binary, value_len::16-signed,
+           value::size(value_len)-binary, bin::binary>>
+       ) do
+    # MIME Media Type
+    parse_attributes(group, res, [{:mime_media_type, name, value} | acc], bin)
+  end
+
+  defp parse_attributes(
+         group,
+         res,
+         acc,
          <<0x21, name_len::16-signed, name::size(name_len)-binary, value_len::16-signed,
            value::signed-integer-size(value_len)-unit(8), bin::binary>>
        ) do
