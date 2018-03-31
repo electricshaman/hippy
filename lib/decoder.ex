@@ -74,6 +74,17 @@ defmodule Hippy.Decoder do
          group,
          res,
          acc,
+         <<0x22, name_len::16-signed, name::size(name_len)-binary, 1::16-signed, value::8,
+           bin::binary>>
+       ) do
+    # Boolean
+    parse_attributes(group, res, [{:boolean, name, to_boolean(value)} | acc], bin)
+  end
+
+  defp parse_attributes(
+         group,
+         res,
+         acc,
          <<0x47, name_len::16-signed, name::size(name_len)-binary, value_len::16-signed,
            value::size(value_len)-binary, bin::binary>>
        ) do
@@ -187,4 +198,7 @@ defmodule Hippy.Decoder do
     # Strip off other values since we are done.
     %{res | data: bin}
   end
+
+  defp to_boolean(0), do: false
+  defp to_boolean(1), do: true
 end
