@@ -85,6 +85,24 @@ defmodule Hippy.Decoder do
          group,
          res,
          acc,
+         <<0x31, name_len::16-signed, name::size(name_len)-binary, 11::16-signed,
+           value::11-binary, bin::binary>>
+       ) do
+    # Datetime
+    <<y::16-signed, mo::8, d::8, h::8, min::8, s::8, ds::8, off_dir::1-binary, off_h::8,
+      off_min::8>> = value
+
+    date = "#{zpad2(y)}-#{zpad2(mo)}-#{zpad2(d)}"
+    time = "T#{zpad2(h)}:#{zpad2(min)}:#{zpad2(s)}.#{ds}"
+    offset = "#{off_dir}#{zpad2(off_h)}#{zpad2(off_min)}"
+
+    parse_attributes(group, res, [{:datetime, name, "#{date}#{time}#{offset}"} | acc], bin)
+  end
+
+  defp parse_attributes(
+         group,
+         res,
+         acc,
          <<0x47, name_len::16-signed, name::size(name_len)-binary, value_len::16-signed,
            value::size(value_len)-binary, bin::binary>>
        ) do
@@ -212,4 +230,6 @@ defmodule Hippy.Decoder do
 
   defp to_boolean(0), do: false
   defp to_boolean(1), do: true
+
+  defp zpad2(value), do: to_string(value) |> String.pad_leading(2, "0")
 end
