@@ -5,15 +5,7 @@ defmodule Hippy.Operation.GetJobAttributes do
 
   @def_charset "utf-8"
   @def_lang "en"
-  @def_atts [
-    "all"
-    #"job-id",
-    #"job-state",
-    #"job-state-reasons",
-    #"job-name",
-    #"job-originating-user-name",
-    #"job-media-sheets-completed"
-  ]
+  @def_atts ["all"]
 
   @enforce_keys [:printer_uri, :job_id]
 
