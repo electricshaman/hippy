@@ -58,14 +58,6 @@ defmodule Hippy.Decoder do
         Map.put(res, key, Enum.reverse(res[key]) |> collapse_sets(key))
       end)
 
-    # res = %{
-    #  res
-    #  | job_attributes: Enum.reverse(res.job_attributes),
-    #    operation_attributes: Enum.reverse(res.operation_attributes),
-    #  printer_attributes: Enum.reverse(res.printer_attributes) |> collapse_sets(:printer_attributes),
-    #    unknown_attributes: Enum.reverse(res.unknown_attributes)
-    # }
-
     {res, acc, bin}
   end
 
@@ -77,30 +69,6 @@ defmodule Hippy.Decoder do
   defp parse_groups(res, acc, <<0x05, bin::binary>>) do
     # Unsupported attributes
     parse_attributes(:unsupported_attributes, res, acc, bin)
-  end
-
-  defp collapse_sets(attributes, :printer_attributes) do
-    groups = Enum.group_by(hd(attributes), fn {syntax, name, value} -> {syntax, name} end)
-
-    Enum.map(groups, fn {{syntax, name}, values} ->
-      if length(values) > 1 do
-        # Set
-        values = Enum.map(values, fn {syntax, name, value} -> value end)
-        {syntax, name, values}
-      else
-        # Single attribute
-        {syntax, name, value} = hd(values)
-        {syntax, name, value}
-      end
-    end)
-  end
-
-  defp collapse_sets(attributes, :operation_attributes) do
-    hd(attributes)
-  end
-
-  defp collapse_sets(attributes, other) do
-    attributes
   end
 
   defp parse_attributes(
@@ -166,6 +134,17 @@ defmodule Hippy.Decoder do
       end
 
     parse_attributes(group, res, [{:datetime, name, value} | acc], bin)
+  end
+
+  defp parse_attributes(
+         group,
+         res,
+         acc,
+         <<0x47, 0x0000::16, value_len::16-signed, value::size(value_len)-binary, bin::binary>>
+       ) do
+    # Charset: additional_value
+    name = find_name_of_set(acc)
+    parse_attributes(group, res, [{:charset, name, value} | acc], bin)
   end
 
   defp parse_attributes(
@@ -363,6 +342,30 @@ defmodule Hippy.Decoder do
 
   defp parse_attributes(group, res, acc, <<_octet::8-signed, bin::binary>>) do
     parse_attributes(group, res, acc, bin)
+  end
+
+  defp collapse_sets(attributes, :printer_attributes) do
+    groups = Enum.group_by(hd(attributes), fn {syntax, name, _value} -> {syntax, name} end)
+
+    Enum.map(groups, fn {{syntax, name}, values} ->
+      if length(values) > 1 do
+        # Set
+        values = Enum.map(values, fn {_syntax, _name, value} -> value end)
+        {syntax, name, values}
+      else
+        # Single attribute
+        {syntax, name, value} = hd(values)
+        {syntax, name, value}
+      end
+    end)
+  end
+
+  defp collapse_sets(attributes, :operation_attributes) do
+    hd(attributes)
+  end
+
+  defp collapse_sets(attributes, _other) do
+    attributes
   end
 
   defp put_group(group, res, acc) do
