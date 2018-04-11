@@ -71,38 +71,23 @@ defmodule Hippy.Protocol.Enum do
     end
   end
 
-  @defined_enums %{
-    "job-state" => Hippy.Protocol.JobState,
-    "status-code" => Hippy.Protocol.StatusCode,
-    "printer-state" => Hippy.Protocol.PrinterState,
-    "printer-type" => Hippy.Protocol.PrinterType,
-    "operations-supported" => Hippy.Protocol.Operation,
-    "print-quality" => Hippy.Protocol.PrintQuality,
-    "print-quality-default" => Hippy.Protocol.PrintQuality,
-    "print-quality-supported" => Hippy.Protocol.PrintQuality,
-    "finishings" => Hippy.Protocol.Finishing,
-    "finishings-default" => Hippy.Protocol.Finishing,
-    "finishings-supported" => Hippy.Protocol.Finishing
-  }
-
   defp get_enum_module(attribute) do
-    # TODO: convert to lookup from map.
-    case attribute do
-      "job-state" -> {:ok, Hippy.Protocol.JobState}
-      "status-code" -> {:ok, Hippy.Protocol.StatusCode}
-      "printer-state" -> {:ok, Hippy.Protocol.PrinterState}
-      "printer-type" -> {:ok, Hippy.Protocol.PrinterType}
-      "operations-supported" -> {:ok, Hippy.Protocol.Operation}
-      "print-quality" -> {:ok, Hippy.Protocol.PrintQuality}
-      "print-quality-default" -> {:ok, Hippy.Protocol.PrintQuality}
-      "print-quality-supported" -> {:ok, Hippy.Protocol.PrintQuality}
-      "finishings" -> {:ok, Hippy.Protocol.Finishing}
-      "finishings-default" -> {:ok, Hippy.Protocol.Finishing}
-      "finishings-supported" -> {:ok, Hippy.Protocol.Finishing}
-      "orientation-requested" -> {:ok, Hippy.Protocol.Orientation}
-      "orientation-requested-supported" -> {:ok, Hippy.Protocol.Orientation}
-      _ -> :error
-    end
+    %{
+      "job-state" => Hippy.Protocol.JobState,
+      "status-code" => Hippy.Protocol.StatusCode,
+      "printer-state" => Hippy.Protocol.PrinterState,
+      "printer-type" => Hippy.Protocol.PrinterType,
+      "operations-supported" => Hippy.Protocol.Operation,
+      "print-quality" => Hippy.Protocol.PrintQuality,
+      "print-quality-default" => Hippy.Protocol.PrintQuality,
+      "print-quality-supported" => Hippy.Protocol.PrintQuality,
+      "finishings" => Hippy.Protocol.Finishing,
+      "finishings-default" => Hippy.Protocol.Finishing,
+      "finishings-supported" => Hippy.Protocol.Finishing,
+      "orientation-requested" => Hippy.Protocol.Orientation,
+      "orientation-requested-supported" => Hippy.Protocol.Orientation
+    }
+    |> Map.fetch(attribute)
   end
 end
 
