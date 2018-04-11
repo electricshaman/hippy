@@ -240,6 +240,28 @@ defmodule Hippy.Decoder do
          group,
          res,
          acc,
+         <<0x46, 0x0000::16, value_len::16-signed, value::size(value_len)-binary, bin::binary>>
+       ) do
+    # uriScheme: additional_value
+    name = find_name_of_set(acc)
+    parse_attributes(group, res, [{:uri_scheme, name, value} | acc], bin)
+  end
+
+  defp parse_attributes(
+         group,
+         res,
+         acc,
+         <<0x46, name_len::16-signed, name::size(name_len)-binary, value_len::16-signed,
+           value::size(value_len)-binary, bin::binary>>
+       ) do
+    # uriScheme
+    parse_attributes(group, res, [{:uri_scheme, name, value} | acc], bin)
+  end
+
+  defp parse_attributes(
+         group,
+         res,
+         acc,
          <<0x23, 0x0000::16, value_len::16-signed, value::integer-size(value_len)-unit(8),
            bin::binary>>
        ) do
