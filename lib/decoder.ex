@@ -218,6 +218,17 @@ defmodule Hippy.Decoder do
          group,
          res,
          acc,
+         <<0x45, 0x0000::16, value_len::16-signed, value::size(value_len)-binary, bin::binary>>
+       ) do
+    # URI: additional_value
+    name = find_name_of_set(acc)
+    parse_attributes(group, res, [{:uri, name, URI.parse(value)} | acc], bin)
+  end
+
+  defp parse_attributes(
+         group,
+         res,
+         acc,
          <<0x45, name_len::16-signed, name::size(name_len)-binary, value_len::16-signed,
            value::size(value_len)-binary, bin::binary>>
        ) do
