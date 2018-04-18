@@ -89,23 +89,25 @@ defmodule Hippy.Decoder do
   end
 
   defp collapse_sets(attributes, :printer_attributes) do
-    groups = Enum.group_by(hd(attributes), fn {syntax, name, _value} -> {syntax, name} end)
+    groups =
+      Enum.with_index(attributes)
+      |> Enum.group_by(fn {{s, n, _v}, _i} -> {s, n} end)
 
     Enum.map(groups, fn {{syntax, name}, values} ->
       if length(values) > 1 do
         # Set
-        values = Enum.map(values, fn {_syntax, _name, value} -> value end)
-        {syntax, name, values}
+        # Use the lowest index for the whole set.
+        {_, index} = Enum.min_by(values, fn {_, index} -> index end)
+        # Project values to their own list.
+        values = Enum.map(values, fn {{_s, _n, v}, _i} -> v end)
+        {{syntax, name, values}, index}
       else
         # Single attribute
-        {syntax, name, value} = hd(values)
-        {syntax, name, value}
+        hd(values)
       end
     end)
-  end
-
-  defp collapse_sets(attributes, :operation_attributes) do
-    hd(attributes)
+    |> Enum.sort_by(fn {_, i} -> i end)
+    |> Enum.map(fn {{s, n, v}, _i} -> {s, n, v} end)
   end
 
   defp collapse_sets(attributes, _other) do
