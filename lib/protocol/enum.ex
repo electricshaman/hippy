@@ -85,7 +85,10 @@ defmodule Hippy.Protocol.Enum do
       "finishings-default" => Hippy.Protocol.Finishing,
       "finishings-supported" => Hippy.Protocol.Finishing,
       "orientation-requested" => Hippy.Protocol.Orientation,
-      "orientation-requested-supported" => Hippy.Protocol.Orientation
+      "orientation-requested-supported" => Hippy.Protocol.Orientation,
+      "orientation-requested-default" => Hippy.Protocol.Orientation,
+      "landscape-orientation-requested-preferred" => Hippy.Protocol.Orientation,
+      "printer-wifi-state" => Hippy.Protocol.PrinterWifiState
     }
     |> Map.fetch(attribute)
   end
