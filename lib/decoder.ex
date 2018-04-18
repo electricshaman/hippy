@@ -132,12 +132,6 @@ defmodule Hippy.Decoder do
     Enum.find_value(acc, fn {_syntax, name, _value} -> name != nil and name end)
   end
 
-  # defp find_name_of_collection(acc) do
-  #  Enum.find_value(acc, fn {syntax, name, value} ->
-  #    syntax == :beg_collection and name != "" and name
-  #  end)
-  # end
-  #
   defp format_date(date_bin) do
     <<y::16-signed, mo::8, d::8, h::8, min::8, s::8, ds::8, off_dir::1-binary, off_h::8,
       off_min::8>> = date_bin
