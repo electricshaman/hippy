@@ -51,11 +51,17 @@ defmodule Hippy.Decoder do
 
   defp parse_groups(res, acc, <<0x03, bin::binary>>) do
     # End of groups
-    att_keys = [:job_attributes, :operation_attributes, :printer_attributes, :unknown_attributes]
+    group_keys = [
+      :job_attributes,
+      :operation_attributes,
+      :printer_attributes,
+      :unknown_attributes
+    ]
 
     res =
-      Enum.reduce(att_keys, res, fn key, res ->
-        Map.put(res, key, Enum.reverse(res[key]) |> collapse_sets(key))
+      Enum.reduce(group_keys, res, fn key, res ->
+        val = Enum.reverse(res[key]) |> collapse_sets(key)
+        Map.put(res, key, val)
       end)
 
     {res, acc, bin}
@@ -72,7 +78,7 @@ defmodule Hippy.Decoder do
   end
 
   defp parse_attributes(group, res, acc, <<octet, _::binary>> = bin) when octet in 0x00..0x05 do
-    put_group(group, res, acc)
+    Map.put(res, group, res[group] ++ acc)
     |> parse_groups([], bin)
   end
 
@@ -104,11 +110,6 @@ defmodule Hippy.Decoder do
 
   defp collapse_sets(attributes, _other) do
     attributes
-  end
-
-  defp put_group(group, res, acc) do
-    atts = [Enum.reverse(acc) | res[group]]
-    Map.put(res, group, atts)
   end
 
   defp data({res, _acc, bin}) do
@@ -173,7 +174,9 @@ defmodule Hippy.Decoder do
     {{:no_value, name, :no_value}, bin}
   end
 
-  defp parse_attribute(<<tag, 0::16, len::16-signed, value::signed-integer-size(len)-unit(8), bin::binary>>)
+  defp parse_attribute(
+         <<tag, 0::16, len::16-signed, value::signed-integer-size(len)-unit(8), bin::binary>>
+       )
        when tag === 0x20 or tag in 0x24..0x2F do
     {{:integer, nil, value}, bin}
   end
@@ -209,7 +212,9 @@ defmodule Hippy.Decoder do
     {{:boolean, name, to_boolean(value)}, bin}
   end
 
-  defp parse_attribute(<<0x23, 0::16, len::16-signed, value::integer-size(len)-unit(8), bin::binary>>) do
+  defp parse_attribute(
+         <<0x23, 0::16, len::16-signed, value::integer-size(len)-unit(8), bin::binary>>
+       ) do
     {{:enum, nil, value}, bin}
   end
 
@@ -241,7 +246,9 @@ defmodule Hippy.Decoder do
     {{:datetime, name, format_date(value)}, bin}
   end
 
-  defp parse_attribute(<<0x32, 0::16, 9::16, xfeed::32-signed, feed::32-signed, unit::8, bin::binary>>) do
+  defp parse_attribute(
+         <<0x32, 0::16, 9::16, xfeed::32-signed, feed::32-signed, unit::8, bin::binary>>
+       ) do
     unit = Hippy.Protocol.ResolutionUnit.decode!(unit)
     {{:resolution, nil, Hippy.PrintResolution.new(xfeed, feed, unit)}, bin}
   end
@@ -254,7 +261,9 @@ defmodule Hippy.Decoder do
     {{:resolution, name, Hippy.PrintResolution.new(xf, f, unit)}, bin}
   end
 
-  defp parse_attribute(<<0x33, 0::16, 8::16-signed, lower::32-signed, upper::32-signed, bin::binary>>) do
+  defp parse_attribute(
+         <<0x33, 0::16, 8::16-signed, lower::32-signed, upper::32-signed, bin::binary>>
+       ) do
     {{:range_of_integer, nil, Range.new(lower, upper)}, bin}
   end
 
@@ -271,7 +280,9 @@ defmodule Hippy.Decoder do
     {{:collection, nil, value}, rest}
   end
 
-  defp parse_attribute(<<0x34, len::16-signed, name::size(len)-binary, 0::16-signed, bin::binary>>) do
+  defp parse_attribute(
+         <<0x34, len::16-signed, name::size(len)-binary, 0::16-signed, bin::binary>>
+       ) do
     # Collection with name
     {value, rest} = parse_collection(%{}, nil, bin)
     {{:collection, name, value}, rest}
@@ -408,10 +419,8 @@ defmodule Hippy.Decoder do
   end
 
   defp parse_collection(acc, member_name, <<_octet, 0::16, _::binary>> = bin) do
-    # IO.inspect member_name
     {value, bin} = parse_attribute(bin)
 
-    # IO.inspect value
     current = acc[member_name]
 
     # TODO: Refactor.
@@ -425,8 +434,6 @@ defmodule Hippy.Decoder do
           Enum.reverse([value | [current]])
         end
       end
-
-    # IO.inspect value
 
     acc = Map.put(acc, member_name, value)
     parse_collection(acc, member_name, bin)
