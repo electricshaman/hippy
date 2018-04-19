@@ -1,4 +1,8 @@
 defmodule Hippy.AttributeTransform do
+  @moduledoc """
+  Functions for handling attribute transformations in an IPP response.
+  """
+
   def handle_attribute({:enum, name, value}) do
     decoded = Hippy.Protocol.Enum.decode!(name, value)
     {:enum, name, decoded}
@@ -41,7 +45,7 @@ defmodule Hippy.AttributeTransform do
 
     case DateTime.from_iso8601("#{date}#{time}#{offset}") do
       {:ok, dt, _offset} -> dt
-      error -> error
+      error -> Tuple.append(error, value)
     end
   end
 
