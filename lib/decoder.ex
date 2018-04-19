@@ -48,20 +48,14 @@ defmodule Hippy.Decoder do
 
   defp parse_groups(res, acc, <<0x03, bin::binary>>) do
     # End of groups
-    group_keys = [
+    groups = [
       :job_attributes,
       :operation_attributes,
       :printer_attributes,
       :unknown_attributes
     ]
 
-    res =
-      Enum.reduce(group_keys, res, fn key, res ->
-        val = Enum.reverse(res[key]) |> collapse_sets(key)
-        Map.put(res, key, val)
-      end)
-
-    {res, acc, bin}
+    {finish_groups(groups, res), acc, bin}
   end
 
   defp parse_groups(res, acc, <<0x04, bin::binary>>) do
@@ -72,6 +66,13 @@ defmodule Hippy.Decoder do
   defp parse_groups(res, acc, <<0x05, bin::binary>>) do
     # Unsupported attributes
     parse_attributes(:unsupported_attributes, res, acc, bin)
+  end
+
+  defp finish_groups(groups, res) do
+    Enum.reduce(groups, res, fn group, res ->
+      val = Enum.reverse(res[group]) |> collapse_sets(group)
+      Map.put(res, group, val)
+    end)
   end
 
   defp parse_attributes(group, res, acc, <<octet, _::binary>> = bin) when octet in 0x00..0x05 do
