@@ -393,22 +393,22 @@ defmodule Hippy.Decoder do
   defp parse_collection(acc, member_name, <<_octet, 0::16, _::binary>> = bin) do
     {value, rest} = parse_attribute(bin)
 
-    current = acc[member_name]
-
-    # TODO: Refactor.
-    value =
-      if is_nil(current) do
-        value
-      else
-        if is_list(current) do
-          Enum.reverse([value | current])
-        else
-          Enum.reverse([value | [current]])
-        end
-      end
-
-    Map.put(acc, member_name, value)
+    Map.put(acc, member_name, member_value(acc[member_name], value))
     |> parse_collection(member_name, rest)
+  end
+
+  defp member_value(existing, new) do
+    cond do
+      is_nil(existing) ->
+        # Nothing exists yet, set single value.
+        new
+      is_list(existing) ->
+        # Append to list.
+        Enum.reverse([new | existing])
+      true ->
+        # Single value exists, create new list.
+        [existing, new]
+    end
   end
 
   defp parse_date(date_bin) do
