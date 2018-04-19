@@ -3,14 +3,11 @@ defmodule Hippy.Decoder do
   Functions for handling binary decoding of an IPP response.
   """
 
-  alias Hippy.{Response, AttributeTransform}
-  alias Hippy.Protocol.StatusCode
-
   require Logger
 
   @doc "Decodes an IPP response from its binary into a response struct."
   def decode(bin) do
-    {%Response{}, bin}
+    {%Hippy.Response{}, bin}
     |> version()
     |> status_code()
     |> request_id()
@@ -26,7 +23,7 @@ defmodule Hippy.Decoder do
 
   defp status_code({res, bin}) do
     <<status_code::16-signed, rest::binary>> = bin
-    status = StatusCode.decode!(status_code)
+    status = Hippy.Protocol.StatusCode.decode!(status_code)
     {%{res | status_code: status}, rest}
   end
 
@@ -87,7 +84,7 @@ defmodule Hippy.Decoder do
 
     attribute =
       {syntax, attribute_name(name, acc), value}
-      |> AttributeTransform.handle_attribute()
+      |> Hippy.AttributeTransform.handle_attribute()
 
     parse_attributes(group, res, [attribute | acc], rest)
   end
