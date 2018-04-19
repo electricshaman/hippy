@@ -225,9 +225,7 @@ defmodule Hippy.Decoder do
     {{:datetime, name, parse_date(value)}, bin}
   end
 
-  defp parse_attribute(
-         <<0x32, 0::16, 9::16, xf::32-signed, f::32-signed, u::8, bin::binary>>
-       ) do
+  defp parse_attribute(<<0x32, 0::16, 9::16, xf::32-signed, f::32-signed, u::8, bin::binary>>) do
     {{:resolution, nil, {xf, f, u}}, bin}
   end
 
@@ -416,6 +414,7 @@ defmodule Hippy.Decoder do
   defp parse_date(date_bin) do
     <<y::16-signed, mo::8, d::8, h::8, min::8, s::8, ds::8, off_dir::1-binary, off_h::8,
       off_min::8>> = date_bin
+
     {y, mo, d, h, min, s, ds, off_dir, off_h, off_min}
   end
 end
