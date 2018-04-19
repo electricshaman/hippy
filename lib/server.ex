@@ -58,8 +58,12 @@ defmodule Hippy.Server do
     {:error, {:unsupported_uri_scheme, scheme}}
   end
 
+  # 192.168.86.109
   defp post(url, body) do
-    headers = ["Content-Type": "application/ipp"]
-    HTTPoison.post(url, body, headers)
+    request = {to_charlist(url), [], 'application/ipp', body}
+    case :httpc.request(:post, request, [], [{:body_format, :binary}]) do
+      {:ok, {{_, code, _}, _, data}} -> {:ok, %{body: data, status_code: code}}
+      {:error, _} = err -> err
+    end
   end
 end
