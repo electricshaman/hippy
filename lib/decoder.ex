@@ -84,8 +84,17 @@ defmodule Hippy.Decoder do
 
   defp parse_attributes(group, res, acc, <<_tag, _::binary>> = bin) do
     {{syntax, name, value}, rest} = parse_attribute(bin)
-    result = {syntax, attribute_name(name, acc), value}
+    result = attribute_result({syntax, attribute_name(name, acc), value})
     parse_attributes(group, res, [result | acc], rest)
+  end
+
+  defp attribute_result({:enum, name, value}) do
+    decoded = Hippy.Protocol.Enum.decode!(name, value)
+    {:enum, name, decoded}
+  end
+
+  defp attribute_result(other) do
+    other
   end
 
   defp collapse_sets(attributes, :printer_attributes) do
