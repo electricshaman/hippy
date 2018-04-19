@@ -3,7 +3,7 @@ defmodule Hippy.Decoder do
   Functions for handling binary decoding of an IPP response.
   """
 
-  alias Hippy.Response
+  alias Hippy.{Response, AttributeTransform}
   alias Hippy.Protocol.StatusCode
 
   require Logger
@@ -84,17 +84,12 @@ defmodule Hippy.Decoder do
 
   defp parse_attributes(group, res, acc, <<_tag, _::binary>> = bin) do
     {{syntax, name, value}, rest} = parse_attribute(bin)
-    result = attribute_result({syntax, attribute_name(name, acc), value})
-    parse_attributes(group, res, [result | acc], rest)
-  end
 
-  defp attribute_result({:enum, name, value}) do
-    decoded = Hippy.Protocol.Enum.decode!(name, value)
-    {:enum, name, decoded}
-  end
+    attribute =
+      {syntax, attribute_name(name, acc), value}
+      |> AttributeTransform.handle_attribute()
 
-  defp attribute_result(other) do
-    other
+    parse_attributes(group, res, [attribute | acc], rest)
   end
 
   defp collapse_sets(attributes, :printer_attributes) do
@@ -128,31 +123,12 @@ defmodule Hippy.Decoder do
     %{res | data: bin}
   end
 
-  defp to_boolean(0), do: false
-  defp to_boolean(1), do: true
-
-  defp zpad2(value), do: to_string(value) |> String.pad_leading(2, "0")
-
   defp attribute_name(nil, acc), do: find_set_name(acc)
   defp attribute_name(name, _acc), do: name
 
   defp find_set_name(acc) do
     # Walk the accumulator to find first previous attribute with a name.
     Enum.find_value(acc, fn {_syntax, name, _value} -> name != nil and name end)
-  end
-
-  defp format_date(date_bin) do
-    <<y::16-signed, mo::8, d::8, h::8, min::8, s::8, ds::8, off_dir::1-binary, off_h::8,
-      off_min::8>> = date_bin
-
-    date = "#{zpad2(y)}-#{zpad2(mo)}-#{zpad2(d)}"
-    time = "T#{zpad2(h)}:#{zpad2(min)}:#{zpad2(s)}.#{ds}"
-    offset = "#{off_dir}#{zpad2(off_h)}#{zpad2(off_min)}"
-
-    case DateTime.from_iso8601("#{date}#{time}#{offset}") do
-      {:ok, dt, _offset} -> dt
-      error -> error
-    end
   end
 
   defp parse_attribute(<<0x10, 0::32, bin::binary>>) do
@@ -208,13 +184,13 @@ defmodule Hippy.Decoder do
   end
 
   defp parse_attribute(<<0x22, 0::16, 1::16, value::8, bin::binary>>) do
-    {{:boolean, nil, to_boolean(value)}, bin}
+    {{:boolean, nil, value}, bin}
   end
 
   defp parse_attribute(
          <<0x22, len::16-signed, name::size(len)-binary, 1::16-signed, value::8, bin::binary>>
        ) do
-    {{:boolean, name, to_boolean(value)}, bin}
+    {{:boolean, name, value}, bin}
   end
 
   defp parse_attribute(
@@ -241,42 +217,38 @@ defmodule Hippy.Decoder do
     {{:octet_string, name, value}, bin}
   end
 
-  defp parse_attribute(<<0x31, 0::16, 11::16-signed, value::11-binary, bin::binary>>) do
-    {{:datetime, nil, format_date(value)}, bin}
+  defp parse_attribute(<<0x31, 0::16, 11::16, value::11-binary, bin::binary>>) do
+    {{:datetime, nil, parse_date(value)}, bin}
   end
 
   defp parse_attribute(
          <<0x31, len::16-signed, name::size(len)-binary, 11::16, value::11-binary, bin::binary>>
        ) do
-    {{:datetime, name, format_date(value)}, bin}
+    {{:datetime, name, parse_date(value)}, bin}
   end
 
   defp parse_attribute(
-         <<0x32, 0::16, 9::16, xfeed::32-signed, feed::32-signed, unit::8, bin::binary>>
+         <<0x32, 0::16, 9::16, xf::32-signed, f::32-signed, u::8, bin::binary>>
        ) do
-    unit = Hippy.Protocol.ResolutionUnit.decode!(unit)
-    {{:resolution, nil, Hippy.PrintResolution.new(xfeed, feed, unit)}, bin}
+    {{:resolution, nil, {xf, f, u}}, bin}
   end
 
   defp parse_attribute(
          <<0x32, len::16-signed, name::size(len)-binary, 9::16-signed, xf::32-signed,
            f::32-signed, u::8, bin::binary>>
        ) do
-    unit = Hippy.Protocol.ResolutionUnit.decode!(u)
-    {{:resolution, name, Hippy.PrintResolution.new(xf, f, unit)}, bin}
+    {{:resolution, name, {xf, f, u}}, bin}
+  end
+
+  defp parse_attribute(<<0x33, 0::16, 8::16, l::32-signed, u::32-signed, bin::binary>>) do
+    {{:range_of_integer, nil, {l, u}}, bin}
   end
 
   defp parse_attribute(
-         <<0x33, 0::16, 8::16-signed, lower::32-signed, upper::32-signed, bin::binary>>
-       ) do
-    {{:range_of_integer, nil, Range.new(lower, upper)}, bin}
-  end
-
-  defp parse_attribute(
-         <<0x33, len::16-signed, name::size(len)-binary, 8::16-signed, l::32-signed, u::32-signed,
+         <<0x33, len::16-signed, name::size(len)-binary, 8::16, l::32-signed, u::32-signed,
            bin::binary>>
        ) do
-    {{:range_of_integer, name, Range.new(l, u)}, bin}
+    {{:range_of_integer, name, {l, u}}, bin}
   end
 
   defp parse_attribute(<<0x34, 0::32, bin::binary>>) do
@@ -285,9 +257,7 @@ defmodule Hippy.Decoder do
     {{:collection, nil, value}, rest}
   end
 
-  defp parse_attribute(
-         <<0x34, len::16-signed, name::size(len)-binary, 0::16-signed, bin::binary>>
-       ) do
+  defp parse_attribute(<<0x34, len::16-signed, name::size(len)-binary, 0::16, bin::binary>>) do
     # Collection with name
     {value, rest} = parse_collection(%{}, nil, bin)
     {{:collection, name, value}, rest}
@@ -353,14 +323,14 @@ defmodule Hippy.Decoder do
   end
 
   defp parse_attribute(<<0x45, 0::16, len::16-signed, value::size(len)-binary, bin::binary>>) do
-    {{:uri, nil, URI.parse(value)}, bin}
+    {{:uri, nil, value}, bin}
   end
 
   defp parse_attribute(
          <<0x45, nlen::16-signed, name::size(nlen)-binary, vlen::16-signed,
            value::size(vlen)-binary, bin::binary>>
        ) do
-    {{:uri, name, URI.parse(value)}, bin}
+    {{:uri, name, value}, bin}
   end
 
   defp parse_attribute(<<0x46, 0::16, len::16-signed, value::size(len)-binary, bin::binary>>) do
@@ -418,13 +388,14 @@ defmodule Hippy.Decoder do
          <<0x4A, 0::16, len::16-signed, name::size(len)-binary, bin::binary>>
        ) do
     # Member attribute
-    {value, bin} = parse_attribute(bin)
-    acc = Map.put(acc, name, value)
-    parse_collection(acc, name, bin)
+    {value, rest} = parse_attribute(bin)
+
+    Map.put(acc, name, value)
+    |> parse_collection(name, rest)
   end
 
   defp parse_collection(acc, member_name, <<_octet, 0::16, _::binary>> = bin) do
-    {value, bin} = parse_attribute(bin)
+    {value, rest} = parse_attribute(bin)
 
     current = acc[member_name]
 
@@ -440,7 +411,13 @@ defmodule Hippy.Decoder do
         end
       end
 
-    acc = Map.put(acc, member_name, value)
-    parse_collection(acc, member_name, bin)
+    Map.put(acc, member_name, value)
+    |> parse_collection(member_name, rest)
+  end
+
+  defp parse_date(date_bin) do
+    <<y::16-signed, mo::8, d::8, h::8, min::8, s::8, ds::8, off_dir::1-binary, off_h::8,
+      off_min::8>> = date_bin
+    {y, mo, d, h, min, s, ds, off_dir, off_h, off_min}
   end
 end
