@@ -49,7 +49,7 @@ defmodule Hippy.Protocol.PrinterType do
     end
   end
 
-  defp decode_masks(value, [], acc) do
+  defp decode_masks(_value, [], acc) do
     Enum.reverse(acc)
   end
 end
