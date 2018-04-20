@@ -410,9 +410,11 @@ defmodule Hippy.Decoder do
       is_nil(existing) ->
         # Nothing exists yet, set single value.
         new
+
       is_list(existing) ->
         # Append to list.
         Enum.reverse([new | existing])
+
       true ->
         # Single value exists, create new list.
         [existing, new]
