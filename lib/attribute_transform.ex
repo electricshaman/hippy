@@ -29,6 +29,25 @@ defmodule Hippy.AttributeTransform do
     {:uri, name, URI.parse(value)}
   end
 
+  @int_time_attributes [
+    "time-at-completed",
+    "time-at-creation",
+    "marker-change-time",
+    "printer-state-change-time",
+    "printer-config-change-time",
+    "printer-up-time",
+    "job-printer-up-time"
+  ]
+
+  def handle_attribute({:integer, name, value}) when name in @int_time_attributes and value > 0 do
+    {:integer, name,
+     case DateTime.from_unix(value) do
+       {:ok, result} -> result
+       _ -> value
+     end}
+  end
+
+  # Catch-all
   def handle_attribute(other) do
     other
   end
