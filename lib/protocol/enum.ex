@@ -84,6 +84,7 @@ defmodule Hippy.Protocol.Enum do
       "finishings" => Hippy.Protocol.Finishing,
       "finishings-default" => Hippy.Protocol.Finishing,
       "finishings-supported" => Hippy.Protocol.Finishing,
+      "finishings-ready" => Hippy.Protocol.Finishing,
       "orientation-requested" => Hippy.Protocol.Orientation,
       "orientation-requested-supported" => Hippy.Protocol.Orientation,
       "orientation-requested-default" => Hippy.Protocol.Orientation,
