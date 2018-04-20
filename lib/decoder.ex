@@ -76,7 +76,7 @@ defmodule Hippy.Decoder do
   end
 
   defp parse_attributes(group, res, acc, <<octet, _::binary>> = bin) when octet in 0x00..0x05 do
-    Map.put(res, group, res[group] ++ acc)
+    Map.put(res, group, add_to_group(group, res, acc))
     |> parse_groups([], bin)
   end
 
@@ -88,6 +88,14 @@ defmodule Hippy.Decoder do
       |> Hippy.AttributeTransform.handle_attribute()
 
     parse_attributes(group, res, [attribute | acc], rest)
+  end
+
+  defp add_to_group(:job_attributes = group, res, acc) do
+    [Enum.reverse(acc) | res[group]]
+  end
+
+  defp add_to_group(group, res, acc) do
+    res[group] ++ acc
   end
 
   defp collapse_sets(attributes, :printer_attributes) do
