@@ -64,7 +64,7 @@ defmodule Hippy.AttributeTransform do
 
     case DateTime.from_iso8601("#{date}#{time}#{offset}") do
       {:ok, dt, _offset} -> dt
-      error -> Tuple.append(error, value)
+      {:error, reason} -> {:error, {reason, value}}
     end
   end
 
