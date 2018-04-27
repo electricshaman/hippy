@@ -6,11 +6,11 @@ defmodule Hippy.AttributeGroup do
   end
 
   def to_map([head | _] = group) when is_tuple(head) do
-    attribute_group_to_map(group)
+    group_to_map(group)
   end
 
   def to_map([head | _]) when is_list(head) do
-    attribute_group_to_map(head)
+    group_to_map(head)
   end
 
   def to_map(_group) do
@@ -19,17 +19,60 @@ defmodule Hippy.AttributeGroup do
 
   def to_map([head | _] = groups, index) when is_list(head) and is_list(groups) do
     Enum.at(groups, index)
-    |> attribute_group_to_map()
+    |> group_to_map()
   end
 
   def to_map(_group, _index) do
     {:error, :bad_attribute_group}
   end
 
-  defp attribute_group_to_map(group) do
-    for att <- group, into: %{} do
-      {_syntax, name, value} = att
-      {name, value}
+  defp group_to_map(group) do
+    Enum.reduce(group, %{}, &att_to_map/2)
+  end
+
+  defp att_to_map({syntax, name, value}, acc) when is_map(value) do
+    if Map.has_key?(value, :__struct__) do
+      Map.put(acc, name, value)
+    else
+      Map.put(acc, name, compact(value))
     end
+  end
+
+  defp att_to_map({syntax, name, value}, acc) when is_list(value) and is_map(hd(value)) do
+    Map.put(acc, name, Enum.map(value, fn i -> compact(i) end))
+  end
+
+  defp att_to_map({syntax, name, value}, acc) do
+    Map.put(acc, name, value)
+  end
+
+  def compact(map) when is_map(map) do
+    if Map.has_key?(map, :__struct__) do
+      map
+    else
+      Enum.reduce(map, Map.new(), fn {k, v}, acc ->
+        case v do
+          val when is_list(val) ->
+            Map.put(acc, k, Enum.map(val, fn i -> compact(i) end))
+
+          {:collection, _, l} when is_list(l) ->
+            Map.put(acc, k, Enum.map(l, fn i -> compact(i) end))
+
+          {:collection, nil, m} ->
+            Map.put(acc, k, compact(m))
+
+          {_, nil, val} ->
+            Map.put(acc, k, val)
+        end
+      end)
+    end
+  end
+
+  def compact({:collection, nil, m}) do
+    compact(m)
+  end
+
+  def compact({_, nil, v}) do
+    v
   end
 end
