@@ -31,19 +31,19 @@ defmodule Hippy.AttributeGroup do
   end
 
   # Struct
-  defp att_to_map({syntax, name, %_{} = value}, acc) do
+  defp att_to_map({_syntax, name, %_{} = value}, acc) do
     Map.put(acc, name, value)
   end
 
-  defp att_to_map({syntax, name, value}, acc) when is_map(value) do
+  defp att_to_map({_syntax, name, value}, acc) when is_map(value) do
     Map.put(acc, name, compact(value))
   end
 
-  defp att_to_map({syntax, name, value}, acc) when is_list(value) and is_map(hd(value)) do
+  defp att_to_map({_syntax, name, value}, acc) when is_list(value) and is_map(hd(value)) do
     Map.put(acc, name, Enum.map(value, fn i -> compact(i) end))
   end
 
-  defp att_to_map({syntax, name, value}, acc) do
+  defp att_to_map({_syntax, name, value}, acc) do
     Map.put(acc, name, value)
   end
 
