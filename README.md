@@ -80,7 +80,7 @@ Hippy.Operation.GetJobs.new("http://localhost:631/printers/HP_Color_LaserJet")
 
 ### Convert the response to a map for easier access by key
 
-Note: this helper currently doesn't support nested attribute groups such as when returning multiple jobs through the `Get-Jobs` IPP operation.  If given a list of attribute groups, it will return the group at the head of the list.  If you wish to access other groups in the list, you can use `AttributeGroup.to_map/2` to provide an index for the nested group at the target index.
+Note: `Hippy.AttributeGroup.to_map/1` currently doesn't support nested attribute groups such as when returning multiple jobs through the `Get-Jobs` IPP operation.  If given a list of attribute groups, instead of returning a list of maps, it will return the group at the head of the list.  If you wish to access other groups in the list, you can use `AttributeGroup.to_map/2` to provide an index for the nested group at the target index.  This behavior may change for `AttributeGroup.to_map/1` in the future, so if you intend to rely on a single map being returned, it would be advisable to use `AttributeGroup.to_map(response.job_attributes, 0)` in order to future-proof your code.
 
 ```elixir
 response = %Hippy.Response{
