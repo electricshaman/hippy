@@ -76,8 +76,44 @@ Hippy.Operation.GetJobs.new("http://localhost:631/printers/HP_Color_LaserJet")
    status_code: :successful_ok,
    version: %Hippy.IPPVersion{major: 1, minor: 1}
  }}
-
 ```
+
+### Convert the response to a map for easier access by key
+```elixir
+response = %Hippy.Response{
+  data: "",
+  job_attributes: [
+    [
+      {:uri, "job-uri", "ipp://localhost:631/jobs/47"},
+      {:integer, "job-id", 47},
+      {:enum, "job-state", :pending},
+      {:text_without_language, "job-state-message", ""},
+      {:keyword, "job-state-reasons", "none"}
+    ]
+  ],
+  operation_attributes: [
+    [
+      {:charset, "attributes-charset", "utf-8"},
+      {:natural_language, "attributes-natural-language", "en"}
+    ]
+  ],
+  printer_attributes: [],
+  request_id: 1,
+  status_code: :successful_ok,
+  unknown_attributes: [],
+  version: %Hippy.IPPVersion{major: 1, minor: 1}
+}
+
+Hippy.AttributeGroup.to_map(response.job_attributes)
+%{
+  "job-id" => 47,
+  "job-state" => :pending,
+  "job-state-message" => "",
+  "job-state-reasons" => "none",
+  "job-uri" => "ipp://localhost:631/jobs/47"
+}
+```
+
 ## Copyright and License
 
 Copyright (c) 2018 Jeff Smith
