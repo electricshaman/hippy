@@ -4,7 +4,7 @@ defmodule Hippy.MixProject do
   def project do
     [
       app: :hippy,
-      version: "0.2.0-dev",
+      version: "0.2.0",
       elixir: "~> 1.4",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
