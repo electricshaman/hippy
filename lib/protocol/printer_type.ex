@@ -1,4 +1,6 @@
 defmodule Hippy.Protocol.PrinterType do
+  import Bitwise
+
   @masks %{
     0x00000001 => "Is a printer class.",
     0x00000002 => "Is a remote destination.",
@@ -30,8 +32,6 @@ defmodule Hippy.Protocol.PrinterType do
     0x08000000 => "Queue is a printer with 3D capabilities."
   }
 
-  import Bitwise
-
   def decode(value) do
     {:ok, value}
   end
@@ -41,9 +41,9 @@ defmodule Hippy.Protocol.PrinterType do
     decode_masks(value, pairs, [])
   end
 
-  defp decode_masks(value, [{mask, cap}|t], acc) do
+  defp decode_masks(value, [{mask, cap} | t], acc) do
     if (value &&& mask) > 0 do
-      decode_masks(value, t, [cap|acc])
+      decode_masks(value, t, [cap | acc])
     else
       decode_masks(value, t, acc)
     end

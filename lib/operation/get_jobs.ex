@@ -7,6 +7,7 @@ defmodule Hippy.Operation.GetJobs do
   @def_lang "en"
   @def_jobs :completed
   @def_atts ["all"]
+  @def_username "hippy"
 
   @enforce_keys [:printer_uri]
 
@@ -14,7 +15,9 @@ defmodule Hippy.Operation.GetJobs do
             charset: @def_charset,
             language: @def_lang,
             which_jobs: @def_jobs,
-            requested_attributes: @def_atts
+            requested_attributes: @def_atts,
+            username: @def_username,
+            my_jobs: false
 
   def new(printer_uri, opts \\ []) do
     %__MODULE__{
@@ -22,7 +25,9 @@ defmodule Hippy.Operation.GetJobs do
       charset: Keyword.get(opts, :charset, @def_charset),
       language: Keyword.get(opts, :language, @def_lang),
       which_jobs: Keyword.get(opts, :which_jobs, @def_jobs),
-      requested_attributes: Keyword.get(opts, :requested_attributes, @def_atts)
+      requested_attributes: Keyword.get(opts, :requested_attributes, @def_atts),
+      username: Keyword.get(opts, :username, @def_username),
+      my_jobs: Keyword.get(opts, :my_jobs, false)
     }
   end
 end
@@ -40,7 +45,9 @@ defimpl Hippy.Operation, for: Hippy.Operation.GetJobs do
         {:natural_language, "attributes-natural-language", op.language},
         {:uri, "printer-uri", target},
         {:keyword, "which-jobs", to_string(op.which_jobs)},
-        {{:set1, :keyword}, "requested-attributes", op.requested_attributes}
+        {{:set1, :keyword}, "requested-attributes", op.requested_attributes},
+        {:name_without_language, "requesting-user-name", op.username},
+        {:boolean, "my-jobs", op.my_jobs}
       ],
       data: <<>>
     }

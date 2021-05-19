@@ -13,7 +13,8 @@ defmodule Hippy.AttributeGroup do
     group_to_map(head)
   end
 
-  def to_map(_group) do
+  def to_map(group) do
+    #    IO.inspect(group)
     {:error, :bad_attribute_group}
   end
 
@@ -52,7 +53,7 @@ defmodule Hippy.AttributeGroup do
   end
 
   def compact(map) when is_map(map) do
-    Enum.reduce(map, Map.new(), fn({k, v}, acc) ->
+    Enum.reduce(map, Map.new(), fn {k, v}, acc ->
       case v do
         val when is_list(val) ->
           Map.put(acc, k, Enum.map(val, fn i -> compact(i) end))

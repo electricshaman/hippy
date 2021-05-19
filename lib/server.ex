@@ -59,7 +59,8 @@ defmodule Hippy.Server do
   end
 
   defp post(url, body) do
+    #    headers = ["Content-Type": "application/ipp", "Authorization": "Basic #####"]
     headers = ["Content-Type": "application/ipp"]
-    HTTPoison.post(url, body, headers)
+    HTTPoison.post(url, body, headers, ssl: [verify: :verify_none])
   end
 end
