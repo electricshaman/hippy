@@ -5,19 +5,22 @@ defmodule Hippy.Operation.CupsGetClasses do
 
   @def_charset "utf-8"
   @def_lang "en"
+  @requested_attributes ["printer-name", "printer-uri-supported", "member-names"]
 
   @enforce_keys [:printer_uri]
 
   defstruct printer_uri: nil,
             charset: @def_charset,
             language: @def_lang,
-printer_info: nil
+            requested_attributes: @requested_attributes,
+            printer_info: nil
 
   def new(printer_uri, opts \\ []) do
     %__MODULE__{
       printer_uri: printer_uri,
       charset: Keyword.get(opts, :charset, @def_charset),
       language: Keyword.get(opts, :language, @def_lang),
+      requested_attributes: Keyword.get(opts, :requested_attributes, @requested_attributes),
 #    printer_info: Keyword.get(opts, :printer_info, "")
       printer_info: "powerball"
     }

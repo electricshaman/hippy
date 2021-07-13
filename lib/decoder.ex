@@ -51,7 +51,7 @@ defmodule Hippy.Decoder do
     groups = [
       :job_attributes,
       :operation_attributes,
-      :printer_attributes,
+      # :printer_attributes,
       :unknown_attributes
     ]
 
@@ -92,6 +92,10 @@ defmodule Hippy.Decoder do
 
   defp add_to_group(:job_attributes = group, res, acc) do
     [Enum.reverse(acc) | res[group]]
+  end
+
+  defp add_to_group(:printer_attributes = group, res, acc) do
+    res[group] ++ [acc]
   end
 
   defp add_to_group(group, res, acc) do
