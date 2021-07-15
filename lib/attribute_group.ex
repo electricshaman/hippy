@@ -14,7 +14,6 @@ defmodule Hippy.AttributeGroup do
   end
 
   def to_map(group) do
-    #    IO.inspect(group)
     {:error, :bad_attribute_group}
   end
 
