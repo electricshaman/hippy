@@ -55,7 +55,6 @@ defimpl Hippy.Operation, for: Hippy.Operation.PrintJob do
       case {k, v} do
         {k, v} when is_integer(v) -> {:integer, k, v}
         {k, v} -> {:keyword, k, v}
-        _ -> {:error, {k, v}}
       end
     end)
   end
