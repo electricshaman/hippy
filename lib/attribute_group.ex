@@ -13,7 +13,7 @@ defmodule Hippy.AttributeGroup do
     group_to_map(head)
   end
 
-  def to_map(group) do
+  def to_map(_group) do
     {:error, :bad_attribute_group}
   end
 
