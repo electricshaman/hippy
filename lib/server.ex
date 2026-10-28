@@ -21,12 +21,11 @@ defmodule Hippy.Server do
   end
 
   def send_request(%Hippy.Request{} = req, endpoint) do
-    # TODO: Rework error handling.  It's broken.
     case post(endpoint, Hippy.Encoder.encode(req)) do
-      {:ok, %{body: body, status_code: 200}} ->
+      {:ok, %Req.Response{status: 200, body: body}} ->
         {:ok, Hippy.Decoder.decode(body)}
 
-      {:ok, %{status_code: status, body: body}} ->
+      {:ok, %Req.Response{status: status, body: body}} ->
         {:error, {:http_error, status, body}}
 
       {:error, _} = error ->
@@ -66,7 +65,15 @@ defmodule Hippy.Server do
   end
 
   defp post(url, body) do
-    headers = ["Content-Type": "application/ipp"]
-    HTTPoison.post(url, body, headers)
+    # Extra Req options (timeouts, TLS settings, etc.) can be supplied via
+    # `config :hippy, req_options: [...]`. POSTs are not retried by Req by
+    # default, which we rely on so a Print-Job is never submitted twice.
+    options =
+      Keyword.merge(
+        [body: body, headers: [{"content-type", "application/ipp"}], decode_body: false],
+        Application.get_env(:hippy, :req_options, [])
+      )
+
+    Req.post(url, options)
   end
 end
