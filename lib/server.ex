@@ -22,8 +22,15 @@ defmodule Hippy.Server do
 
   def send_request(%Hippy.Request{} = req, endpoint) do
     # TODO: Rework error handling.  It's broken.
-    with {:ok, %{body: body, status_code: 200}} <- post(endpoint, Hippy.Encoder.encode(req)) do
-      {:ok, Hippy.Decoder.decode(body)}
+    case post(endpoint, Hippy.Encoder.encode(req)) do
+      {:ok, %{body: body, status_code: 200}} ->
+        {:ok, Hippy.Decoder.decode(body)}
+
+      {:ok, %{status_code: status, body: body}} ->
+        {:error, {:http_error, status, body}}
+
+      {:error, _} = error ->
+        error
     end
   end
 

@@ -39,7 +39,7 @@ defimpl Hippy.Operation, for: Hippy.Operation.GetJobs do
         {:charset, "attributes-charset", op.charset},
         {:natural_language, "attributes-natural-language", op.language},
         {:uri, "printer-uri", target},
-        {:keyword, "which-jobs", to_string(op.which_jobs)},
+        {:keyword, "which-jobs", op.which_jobs |> to_string() |> String.replace("_", "-")},
         {{:set1, :keyword}, "requested-attributes", op.requested_attributes}
       ],
       data: <<>>

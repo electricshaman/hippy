@@ -1413,4 +1413,9 @@ defmodule Hippy.AttributeGroupTest do
              "job-printer-state-reasons" => "none"
            }
   end
+
+  test "to_map with an out-of-range index returns an error" do
+    assert Hippy.AttributeGroup.to_map([[{:integer, "job-id", 1}]], 5) ==
+             {:error, :bad_attribute_group}
+  end
 end

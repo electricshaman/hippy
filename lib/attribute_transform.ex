@@ -4,8 +4,12 @@ defmodule Hippy.AttributeTransform do
   """
 
   def handle_attribute({:enum, name, value}) do
-    decoded = Hippy.Protocol.Enum.decode!(name, value)
-    {:enum, name, decoded}
+    # Leave the raw integer in place for enums or values we don't know about
+    # (e.g. vendor extensions) rather than failing the whole response.
+    case Hippy.Protocol.Enum.decode(name, value) do
+      {:ok, decoded} -> {:enum, name, decoded}
+      {:error, _} -> {:enum, name, value}
+    end
   end
 
   def handle_attribute({:boolean, name, value}) do
