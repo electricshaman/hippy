@@ -7,6 +7,14 @@ Hippy is an [Internet Printing Protocol](https://en.wikipedia.org/wiki/Internet_
 ## Obligatory Warning
 This is currently very alpha-stage software and will be evolving quickly.  Please only consider it for production use at your own risk.
 
+## Configuration
+
+Hippy uses [Req](https://hex.pm/packages/req) for HTTP and requires Elixir 1.15 or later. Extra Req options (timeouts, TLS settings, etc.) can be passed through application config:
+
+```elixir
+config :hippy, req_options: [receive_timeout: 30_000]
+```
+
 ## Usage Examples
 
 ### Print a PDF document
