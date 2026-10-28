@@ -15,8 +15,14 @@ defmodule Hippy.Encoder do
       end
 
     job_attributes_bin =
-      for attribute <- req.job_attributes, into: "" do
-        encode_attribute(attribute)
+      case req.job_attributes do
+        [] ->
+          ""
+
+        attributes ->
+          for attribute <- attributes, into: <<DelimiterTag.job_attributes()::8-signed>> do
+            encode_attribute(attribute)
+          end
       end
 
     <<operation_attributes_bin::binary, job_attributes_bin::binary,
