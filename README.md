@@ -125,6 +125,16 @@ Hippy.AttributeGroup.to_map(response.job_attributes)
 }
 ```
 
+## Development
+
+Run the unit tests with `mix test`.
+
+Integration tests run Hippy against a real CUPS server in a throwaway Docker container (see `test/integration/cups/`). They are excluded by default and need a running Docker daemon:
+
+```
+mix test --only cups
+```
+
 ## Copyright and License
 
 Copyright (c) 2018-2026 Jeff Smith
