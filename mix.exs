@@ -4,7 +4,7 @@ defmodule Hippy.MixProject do
   def project do
     [
       app: :hippy,
-      version: "0.4.0-dev",
+      version: "0.4.0",
       elixir: "~> 1.15",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -38,7 +38,7 @@ defmodule Hippy.MixProject do
 
   defp package do
     [
-      files: ["lib", "mix.exs", "README.md", "LICENSE"],
+      files: ["lib", "mix.exs", "README.md", "CHANGELOG.md", "LICENSE"],
       maintainers: ["Jeff Smith"],
       licenses: ["MIT"],
       links: %{"GitHub" => "https://github.com/electricshaman/hippy"}

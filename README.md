@@ -127,7 +127,7 @@ Hippy.AttributeGroup.to_map(response.job_attributes)
 
 ## Copyright and License
 
-Copyright (c) 2018-2024 Jeff Smith
+Copyright (c) 2018-2026 Jeff Smith
 
 Hippy source code is licensed under the [MIT License].
 
