@@ -44,7 +44,7 @@ defmodule Hippy.Protocol.Enum do
 
       def decode(value) do
         case Map.fetch(@right, value) do
-          {:ok, key} = ok -> ok
+          {:ok, _key} = ok -> ok
           :error -> {:error, :bad_value}
         end
       end

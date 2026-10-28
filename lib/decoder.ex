@@ -52,6 +52,7 @@ defmodule Hippy.Decoder do
       :job_attributes,
       :operation_attributes,
       :printer_attributes,
+      :unsupported_attributes,
       :unknown_attributes
     ]
 
@@ -95,7 +96,8 @@ defmodule Hippy.Decoder do
   end
 
   defp add_to_group(group, res, acc) do
-    res[group] ++ acc
+    # Both acc and the group are kept in reverse order until finish_groups/2.
+    acc ++ res[group]
   end
 
   defp collapse_sets(attributes, :printer_attributes) do
@@ -267,6 +269,22 @@ defmodule Hippy.Decoder do
     {{:collection, name, value}, rest}
   end
 
+  defp parse_attribute(
+         <<tag, 0::16, _vlen::16-signed, llen::16-signed, lang::size(llen)-binary,
+           tlen::16-signed, text::size(tlen)-binary, bin::binary>>
+       )
+       when tag in [0x35, 0x36] do
+    {{with_language_syntax(tag), nil, {lang, text}}, bin}
+  end
+
+  defp parse_attribute(
+         <<tag, nlen::16-signed, name::size(nlen)-binary, _vlen::16-signed, llen::16-signed,
+           lang::size(llen)-binary, tlen::16-signed, text::size(tlen)-binary, bin::binary>>
+       )
+       when tag in [0x35, 0x36] do
+    {{with_language_syntax(tag), name, {lang, text}}, bin}
+  end
+
   defp parse_attribute(<<tag, 0::16, len::16-signed, value::size(len)-binary, bin::binary>>)
        when tag in 0x38..0x3F do
     {{:octet_string, nil, value}, bin}
@@ -381,6 +399,9 @@ defmodule Hippy.Decoder do
     {{:mime_media_type, name, value}, bin}
   end
 
+  defp with_language_syntax(0x35), do: :text_with_language
+  defp with_language_syntax(0x36), do: :name_with_language
+
   defp parse_collection(acc, _stack, <<0x37, 0::32, bin::binary>>) do
     # End of collection
     {acc, bin}
@@ -413,7 +434,7 @@ defmodule Hippy.Decoder do
 
       is_list(existing) ->
         # Append to list.
-        Enum.reverse([new | existing])
+        existing ++ [new]
 
       true ->
         # Single value exists, create new list.

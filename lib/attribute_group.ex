@@ -18,8 +18,10 @@ defmodule Hippy.AttributeGroup do
   end
 
   def to_map([head | _] = groups, index) when is_list(head) and is_list(groups) do
-    Enum.at(groups, index)
-    |> group_to_map()
+    case Enum.at(groups, index) do
+      nil -> {:error, :bad_attribute_group}
+      group -> group_to_map(group)
+    end
   end
 
   def to_map(_group, _index) do

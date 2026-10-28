@@ -5,6 +5,7 @@ defmodule Hippy.Response do
             operation_attributes: [],
             job_attributes: [],
             printer_attributes: [],
+            unsupported_attributes: [],
             unknown_attributes: [],
             data: nil
 
