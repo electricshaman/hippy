@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  MIX_ENV: test
+
+jobs:
+  test:
+    name: Test (Elixir ${{ matrix.elixir }}, OTP ${{ matrix.otp }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Oldest supported versions (the elixir requirement in mix.exs).
+          - elixir: "1.15.8"
+            otp: "26.2.5.21"
+          # Keep in sync with .tool-versions.
+          - elixir: "1.19.4"
+            otp: "28.3.2"
+            lint: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ matrix.elixir }}
+          otp-version: ${{ matrix.otp }}
+          version-type: strict
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ matrix.elixir }}-${{ matrix.otp }}-${{ hashFiles('mix.lock') }}
+          restore-keys: mix-${{ runner.os }}-${{ matrix.elixir }}-${{ matrix.otp }}-
+
+      - run: mix deps.get
+
+      - run: mix format --check-formatted
+        if: matrix.lint
+
+      - run: mix compile --warnings-as-errors
+
+      - run: mix test
+
+      - run: mix hex.audit
+        if: matrix.lint
+
+  cups:
+    name: CUPS integration
+    # Runs on master and manual dispatch. Add the "cups" label to a PR to run it there too.
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'cups')
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.19.4"
+          otp-version: "28.3.2"
+          version-type: strict
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-1.19.4-28.3.2-${{ hashFiles('mix.lock') }}
+          restore-keys: mix-${{ runner.os }}-1.19.4-28.3.2-
+
+      - run: mix deps.get
+
+      # Build the image up front so the slow apt step isn't inside the test run.
+      - run: docker build -t hippy-cups-test test/integration/cups
+
+      - run: mix test --only cups

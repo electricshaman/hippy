@@ -36,7 +36,8 @@ defmodule Hippy.Encoder do
   end
 
   defp encode_attribute({{:set1, tag}, name, value})
-       when tag in [:charset, :uri, :natural_language, :keyword, :name_without_language] and is_list(value) do
+       when tag in [:charset, :uri, :natural_language, :keyword, :name_without_language] and
+              is_list(value) do
     [head_value | tail] = value
 
     bin =

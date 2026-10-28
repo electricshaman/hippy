@@ -41,9 +41,9 @@ defmodule Hippy.Protocol.PrinterType do
     decode_masks(value, pairs, [])
   end
 
-  defp decode_masks(value, [{mask, cap}|t], acc) do
+  defp decode_masks(value, [{mask, cap} | t], acc) do
     if (value &&& mask) > 0 do
-      decode_masks(value, t, [cap|acc])
+      decode_masks(value, t, [cap | acc])
     else
       decode_masks(value, t, acc)
     end
