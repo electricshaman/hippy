@@ -2,7 +2,19 @@
 
 ## Unreleased
 
+### Added
+
+- Enum decoding can be extended with `config :hippy, enums: %{"attribute-name" => Module}`.
+  Registered enums take precedence over the built-in ones. See `Hippy.Protocol.Enum`.
+- `Hippy.Protocol.Enum` is now a behaviour, so enum modules that don't use the macro (such as a
+  bit field) can be registered too.
+- `xxx-default` and `xxx-supported` attributes are decoded with the enum for `xxx` when they have
+  no enum of their own.
+
 ### Fixes
+
+- Decoding a response containing `printer-wifi-state` no longer crashes (regression in 0.4.0).
+- `printer-type` is decoded into a list of capability descriptions again (regression in 0.4.0).
 
 - Multi-valued attributes (e.g. `job-state-reasons`, `job-sheets`) are now decoded as a list in
   every attribute group. Previously only printer attributes were, so `AttributeGroup.to_map/2`
