@@ -102,6 +102,7 @@ defmodule Hippy.Integration.CupsTest do
       attrs = job_attributes!(uri, id)
       assert attrs["job-name"] == "Hippy PDF ✓"
       assert attrs["orientation-requested"] == :landscape
+      assert attrs["job-sheets"] == ["none", "none"]
 
       # orientation-requested=4 (landscape) was handed to the CUPS filters. CUPS also accepts
       # job attributes sent in the operation group, so correct grouping is covered by

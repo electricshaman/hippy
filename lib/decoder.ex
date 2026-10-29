@@ -71,8 +71,33 @@ defmodule Hippy.Decoder do
 
   defp finish_groups(groups, res) do
     Enum.reduce(groups, res, fn group, res ->
-      val = Enum.reverse(res[group]) |> collapse_sets(group)
+      val = Enum.reverse(res[group]) |> merge_duplicates(group)
       Map.put(res, group, val)
+    end)
+  end
+
+  defp merge_duplicates(groups, :job_attributes) do
+    Enum.map(groups, &merge_duplicates(&1, nil))
+  end
+
+  defp merge_duplicates(attributes, _group) do
+    # Some printers repeat an attribute name within a group, which IPP doesn't allow.
+    # Merge the values so none are lost, keeping the position of the first occurrence.
+    by_name = Enum.group_by(attributes, &elem(&1, 1))
+
+    attributes
+    |> Enum.uniq_by(&elem(&1, 1))
+    |> Enum.map(fn {syntax, name, _value} = first ->
+      case by_name[name] do
+        [_single] ->
+          first
+
+        duplicates ->
+          case duplicates |> Enum.flat_map(&List.wrap(elem(&1, 2))) |> Enum.uniq() do
+            [value] -> {syntax, name, value}
+            values -> {syntax, name, values}
+          end
+      end
     end)
   end
 
@@ -82,13 +107,20 @@ defmodule Hippy.Decoder do
   end
 
   defp parse_attributes(group, res, acc, <<_tag, _::binary>> = bin) do
-    {{syntax, name, value}, rest} = parse_attribute(bin)
+    {attribute, rest} = parse_attribute(bin)
+    parse_attributes(group, res, add_attribute(acc, attribute), rest)
+  end
 
-    attribute =
-      {syntax, attribute_name(name, acc), value}
-      |> Hippy.AttributeTransform.handle_attribute()
+  defp add_attribute([{syntax, name, existing} | acc], {value_syntax, nil, value}) do
+    # An attribute without a name is an additional value of the previous attribute (a set).
+    {_, _, value} = Hippy.AttributeTransform.handle_attribute({value_syntax, name, value})
 
-    parse_attributes(group, res, [attribute | acc], rest)
+    values = if is_list(existing), do: existing ++ [value], else: [existing, value]
+    [{syntax, name, values} | acc]
+  end
+
+  defp add_attribute(acc, attribute) do
+    [Hippy.AttributeTransform.handle_attribute(attribute) | acc]
   end
 
   defp add_to_group(:job_attributes = group, res, acc) do
@@ -100,43 +132,9 @@ defmodule Hippy.Decoder do
     acc ++ res[group]
   end
 
-  defp collapse_sets(attributes, :printer_attributes) do
-    groups =
-      Enum.with_index(attributes)
-      |> Enum.group_by(fn {{s, n, _v}, _i} -> {s, n} end)
-
-    Enum.map(groups, fn {{syntax, name}, values} ->
-      if length(values) > 1 do
-        # Set
-        # Use the lowest index for the whole set.
-        {_, index} = Enum.min_by(values, fn {_, index} -> index end)
-        # Project values to their own list.
-        values = Enum.map(values, fn {{_s, _n, v}, _i} -> v end)
-        {{syntax, name, values}, index}
-      else
-        # Single attribute
-        hd(values)
-      end
-    end)
-    |> Enum.sort_by(fn {_, i} -> i end)
-    |> Enum.map(fn {{s, n, v}, _i} -> {s, n, v} end)
-  end
-
-  defp collapse_sets(attributes, _other) do
-    attributes
-  end
-
   defp data({res, _acc, bin}) do
     # Strip off other values since we are done.
     %{res | data: bin}
-  end
-
-  defp attribute_name(nil, acc), do: find_set_name(acc)
-  defp attribute_name(name, _acc), do: name
-
-  defp find_set_name(acc) do
-    # Walk the accumulator to find first previous attribute with a name.
-    Enum.find_value(acc, fn {_syntax, name, _value} -> name != nil and name end)
   end
 
   defp parse_attribute(<<0x10, 0::32, bin::binary>>) do

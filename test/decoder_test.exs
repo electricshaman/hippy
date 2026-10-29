@@ -80,4 +80,82 @@ defmodule Hippy.DecoderTest do
     [{:collection, "col", %{"m" => members}}] = res.printer_attributes
     assert Enum.map(members, &elem(&1, 2)) == ["a", "b", "c", "d"]
   end
+
+  describe "multi-valued attributes" do
+    defp additional(tag, value), do: <<tag, 0::16, byte_size(value)::16, value::binary>>
+
+    test "are decoded as a list in every group" do
+      set = keyword("reasons", "a") <> additional(0x44, "b") <> additional(0x44, "c")
+
+      for {delimiter, field} <- [
+            {0x01, :operation_attributes},
+            {0x04, :printer_attributes},
+            {0x05, :unsupported_attributes}
+          ] do
+        res = Decoder.decode(response(<<delimiter>> <> set))
+        assert {:keyword, "reasons", ["a", "b", "c"]} in res[field]
+      end
+    end
+
+    test "are kept per job" do
+      res =
+        Decoder.decode(
+          response(
+            <<0x02>> <>
+              keyword("job-state-reasons", "job-incoming") <>
+              additional(0x44, "job-hold-until-specified") <>
+              <<0x02>> <> keyword("job-state-reasons", "none")
+          )
+        )
+
+      assert Hippy.AttributeGroup.to_map(res.job_attributes, 0)["job-state-reasons"] ==
+               ["job-incoming", "job-hold-until-specified"]
+
+      assert Hippy.AttributeGroup.to_map(res.job_attributes, 1)["job-state-reasons"] == "none"
+    end
+
+    test "keep repeated values and values of different syntaxes" do
+      res =
+        Decoder.decode(
+          response(
+            <<0x04>> <>
+              keyword("media", "a4") <>
+              additional(0x42, "custom") <>
+              additional(0x44, "a4") <> keyword("other", "x")
+          )
+        )
+
+      assert res.printer_attributes == [
+               {:keyword, "media", ["a4", "custom", "a4"]},
+               {:keyword, "other", "x"}
+             ]
+    end
+
+    test "transform each value" do
+      res =
+        Decoder.decode(
+          response(<<0x04>> <> enum("printer-state", 3) <> <<0x23, 0::16, 4::16, 5::32>>)
+        )
+
+      assert res.printer_attributes == [{:enum, "printer-state", [:idle, :stopped]}]
+    end
+  end
+
+  test "merges attributes repeated by name within a group" do
+    res =
+      Decoder.decode(
+        response(
+          <<0x04>> <>
+            keyword("types", "a") <>
+            additional(0x44, "b") <>
+            keyword("sheet-back", "normal") <>
+            keyword("types", "b") <> keyword("types", "c") <> keyword("sheet-back", "normal")
+        )
+      )
+
+    assert res.printer_attributes == [
+             {:keyword, "types", ["a", "b", "c"]},
+             {:keyword, "sheet-back", "normal"}
+           ]
+  end
 end
