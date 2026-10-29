@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Fixes
+
+- Multi-valued attributes (e.g. `job-state-reasons`, `job-sheets`) are now decoded as a list in
+  every attribute group. Previously only printer attributes were, so `AttributeGroup.to_map/2`
+  kept only the last value for job and operation attributes.
+- Values of a multi-valued attribute with different syntaxes (e.g. `keyword` and `name`) are kept
+  together in one attribute instead of being split by syntax.
+- Attributes repeated by name within a group (which some printers send) are merged in every group,
+  dropping duplicate values.
+
+## 0.4.1 (2026-10-29)
+
 ### Added
 
 - Enum decoding can be extended with `config :hippy, enums: %{"attribute-name" => Module}`.
@@ -15,14 +27,6 @@
 
 - Decoding a response containing `printer-wifi-state` no longer crashes (regression in 0.4.0).
 - `printer-type` is decoded into a list of capability descriptions again (regression in 0.4.0).
-
-- Multi-valued attributes (e.g. `job-state-reasons`, `job-sheets`) are now decoded as a list in
-  every attribute group. Previously only printer attributes were, so `AttributeGroup.to_map/2`
-  kept only the last value for job and operation attributes.
-- Values of a multi-valued attribute with different syntaxes (e.g. `keyword` and `name`) are kept
-  together in one attribute instead of being split by syntax.
-- Attributes repeated by name within a group (which some printers send) are merged in every group,
-  dropping duplicate values.
 
 ## 0.4.0 (2026-10-28)
 
