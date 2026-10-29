@@ -265,6 +265,31 @@ defmodule Hippy.Integration.CupsTest do
       end)
     end
 
+    test "a pinned self-signed certificate is accepted (as in the README)", ctx do
+      pem = container_exec(ctx.container, ["sh", "-c", "cat /etc/cups/ssl/*.crt"])
+      [{:Certificate, pinned, _}] = :public_key.pem_decode(pem)
+      op = GetPrinterAttributes.new(printer(ctx.https, "raw"))
+
+      # Erlang never trusts a self-signed server certificate through cacerts.
+      capture_log(fn ->
+        assert {:error, %Req.TransportError{reason: {:tls_alert, {:bad_certificate, msg}}}} =
+                 Hippy.send_operation(op, tls_options(cacerts: [pinned]))
+
+        assert to_string(msg) =~ "selfsigned_peer"
+      end)
+
+      assert send!(op, tls_options(verify_fun: {pinning_verify_fun(pinned), nil})).status_code ==
+               :successful_ok
+
+      capture_log(fn ->
+        assert {:error, %Req.TransportError{reason: {:tls_alert, _}}} =
+                 Hippy.send_operation(
+                   op,
+                   tls_options(verify_fun: {pinning_verify_fun(<<"other">>), nil})
+                 )
+      end)
+    end
+
     test "receive timeout surfaces as a transport error", %{http: http} do
       op = PrintJob.new(printer(http, "raw"), :crypto.strong_rand_bytes(25 * 1024 * 1024))
 
@@ -293,6 +318,28 @@ defmodule Hippy.Integration.CupsTest do
   end
 
   defp printer(base, queue), do: "#{base}/printers/#{queue}"
+
+  defp tls_options(transport_opts),
+    do: [req_options: [connect_options: [transport_opts: transport_opts]]]
+
+  # Same as the README's "Self-signed certificates" example.
+  defp pinning_verify_fun(pinned) do
+    fn
+      cert, {:bad_cert, :selfsigned_peer}, state ->
+        if :public_key.pkix_encode(:OTPCertificate, cert, :otp) == pinned,
+          do: {:valid, state},
+          else: {:fail, :selfsigned_peer}
+
+      _cert, {:bad_cert, _} = reason, _state ->
+        {:fail, reason}
+
+      _cert, {:extension, _}, state ->
+        {:unknown, state}
+
+      _cert, _valid, state ->
+        {:valid, state}
+    end
+  end
 
   defp send!(op, opts \\ []) do
     {:ok, %Hippy.Response{} = res} = Hippy.send_operation(op, opts)

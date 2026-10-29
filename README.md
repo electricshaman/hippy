@@ -32,6 +32,55 @@ config :hippy, enums: %{
 }
 ```
 
+## Authentication, TLS and timeouts
+
+### Authentication
+
+Printers and CUPS servers that require authentication return an HTTP error instead of an IPP response, as `{:error, {:http_error, status, body}}`. Pass credentials with `req_options: [auth: {:basic, "user:pass"}]`, over HTTPS (an `https://` or `ipps://` printer URI).
+
+With its default policy, CUPS lets anyone print and query, but job management such as Cancel-Job needs authentication when the request comes from another machine:
+
+| Request | Result |
+|---|---|
+| Cancel-Job over plain HTTP | `{:error, {:http_error, 426, _}}` (Upgrade Required: use HTTPS) |
+| Cancel-Job over HTTPS without credentials | `{:error, {:http_error, 401, _}}` |
+| Cancel-Job for another user's job | `{:error, {:http_error, 403, _}}` |
+| Cancel-Job for your own job, authenticated | `{:ok, %Hippy.Response{status_code: :successful_ok}}` |
+
+### Self-signed certificates
+
+Certificates are verified by default. CUPS and many printers use a self-signed certificate, which fails verification with `{:error, %Req.TransportError{reason: {:tls_alert, {:bad_certificate, _}}}}`. Erlang doesn't accept a self-signed server certificate as trusted through `cacertfile` or `cacerts`, so either:
+
+- give the server a certificate signed by a CA you trust, and pass the CA with `connect_options: [transport_opts: [cacertfile: "ca.pem"]]`, or
+- pin the server's own certificate (for CUPS, `/etc/cups/ssl/<hostname>.crt`):
+
+```elixir
+[{:Certificate, pinned, _}] = :public_key.pem_decode(File.read!("cups.crt"))
+
+verify_fun = fn
+  cert, {:bad_cert, :selfsigned_peer}, state ->
+    if :public_key.pkix_encode(:OTPCertificate, cert, :otp) == pinned,
+      do: {:valid, state},
+      else: {:fail, :selfsigned_peer}
+
+  _cert, {:bad_cert, _} = reason, _state -> {:fail, reason}
+  _cert, {:extension, _}, state -> {:unknown, state}
+  _cert, _valid, state -> {:valid, state}
+end
+
+Hippy.send_operation(op,
+  req_options: [connect_options: [transport_opts: [verify_fun: {verify_fun, nil}]]]
+)
+```
+
+`transport_opts: [verify: :verify_none]` turns verification off entirely. Only use it for testing, since it lets anyone on the network impersonate the printer and read the documents you send.
+
+### Timeouts and retries
+
+Req waits 15 seconds for a response by default. Sending a large document to a slow printer can take longer, so raise it with `req_options: [receive_timeout: 60_000]`.
+
+A timeout returns `{:error, %Req.TransportError{reason: :timeout}}`, but **the printer may still have accepted the job**. Hippy never retries a request, so a Print-Job is never submitted twice by accident. Don't blindly resend after a timeout either: check whether the job exists first, e.g. with `Hippy.Operation.GetJobs.new(uri, which_jobs: :not_completed)` and a unique `job_name`.
+
 ## Usage Examples
 
 ### Print a PDF document
