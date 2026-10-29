@@ -1,0 +1,50 @@
+name: CUPS
+
+# The CUPS integration tests (test/integration/cups_test.exs) are a separate workflow so that
+# adding a label only reruns them. GitHub's PR checks show the latest run of each workflow, so a
+# label-triggered run in the main CI workflow would hide the unit test results.
+on:
+  push:
+    branches: [master]
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  MIX_ENV: test
+
+jobs:
+  cups:
+    name: CUPS integration
+    # Runs on master and manual dispatch. Add the "cups" label to a PR to run it there too.
+    # Any later event on a labelled PR reruns it, so the latest run is always a real result.
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'cups')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.19.4"
+          otp-version: "28.3.2"
+          version-type: strict
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-1.19.4-28.3.2-${{ hashFiles('mix.lock') }}
+          restore-keys: mix-${{ runner.os }}-1.19.4-28.3.2-
+
+      - run: mix deps.get
+
+      # Build the image up front so the slow apt step isn't inside the test run.
+      - run: docker build -t hippy-cups-test test/integration/cups
+
+      - run: mix test --only cups
