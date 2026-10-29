@@ -129,6 +129,18 @@ defmodule Hippy.EncoderValuesTest do
            ]
   end
 
+  test "out-of-band values ignore the value" do
+    assert round_trip([
+             {:delete_attribute, "job-hold-until", nil},
+             {:no_value, "job-name", "ignored"},
+             {:not_settable, "printer-name", nil}
+           ]) == [
+             {:delete_attribute, "job-hold-until", :delete_attribute},
+             {:no_value, "job-name", :no_value},
+             {:not_settable, "printer-name", :not_settable}
+           ]
+  end
+
   test "URIs accept strings and URI structs" do
     assert [{:uri, "a", %URI{host: "h"}}, {:uri, "b", %URI{host: "h"}}] =
              round_trip([{:uri, "a", "ipp://h/p"}, {:uri, "b", URI.parse("ipp://h/p")}])

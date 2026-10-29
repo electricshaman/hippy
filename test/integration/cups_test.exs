@@ -67,6 +67,11 @@ defmodule Hippy.Integration.CupsTest do
         assert attrs["printer-is-accepting-jobs"] == accepting
         assert attrs["printer-type"] |> List.wrap() |> Enum.all?(&is_binary/1)
         assert :portrait in attrs["orientation-requested-supported"]
+
+        # Every enum value CUPS sends is one Hippy knows.
+        for {:enum, name, value} <- res.printer_attributes, v <- List.wrap(value) do
+          refute is_integer(v), "#{name} has an undecoded value #{v}"
+        end
       end
     end
 

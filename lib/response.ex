@@ -3,7 +3,9 @@ defmodule Hippy.Response do
   A decoded IPP response.
 
   Attributes are kept as `{syntax, name, value}` tuples in the order the printer sent them.
-  `job_attributes` is a list of groups, one per job. The functions in this module return
+  `job_attributes` is a list of groups, one per job, and so are `subscription_attributes`,
+  `event_notification_attributes`, `resource_attributes` and `document_attributes`.
+  `unknown_attributes` holds attributes from group tags not assigned by IANA. The functions in this module return
   attributes as maps of names to values instead:
 
       {:ok, res} = Hippy.send_operation(PrintJob.new(uri, doc))
@@ -19,6 +21,11 @@ defmodule Hippy.Response do
             job_attributes: [],
             printer_attributes: [],
             unsupported_attributes: [],
+            subscription_attributes: [],
+            event_notification_attributes: [],
+            resource_attributes: [],
+            document_attributes: [],
+            system_attributes: [],
             unknown_attributes: [],
             data: nil
 
