@@ -53,8 +53,8 @@ defmodule Hippy.EnumTest do
     assert decode_printer_attributes([{"job-state", 9}])["job-state"] == :completed
   end
 
-  test "printer-wifi-state is left as an integer" do
-    assert decode_printer_attributes([{"printer-wifi-state", 3}])["printer-wifi-state"] == 3
+  test "printer-wifi-state is decoded" do
+    assert decode_printer_attributes([{"printer-wifi-state", 3}])["printer-wifi-state"] == :off
   end
 
   test "-default and -supported variants use the base enum" do

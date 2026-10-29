@@ -110,18 +110,35 @@ defmodule Hippy.IPP.Enum do
     end
   end
 
+  # Attributes whose values are defined by another attribute's enum (e.g. input-quality uses
+  # print-quality's values) are listed under that enum, as in the IANA registry.
   @builtin_enums %{
     "job-state" => Hippy.IPP.JobState,
+    "output-device-job-states" => Hippy.IPP.JobState,
     "status-code" => Hippy.IPP.StatusCode,
+    "fetch-status-code" => Hippy.IPP.StatusCode,
     "printer-state" => Hippy.IPP.PrinterState,
     "printer-type" => Hippy.IPP.PrinterType,
+    "printer-wifi-state" => Hippy.IPP.PrinterWifiState,
     "operations-supported" => Hippy.IPP.Operation,
     "print-quality" => Hippy.IPP.PrintQuality,
+    "input-quality" => Hippy.IPP.PrintQuality,
     "finishings" => Hippy.IPP.Finishing,
     "finishings-ready" => Hippy.IPP.Finishing,
     "orientation-requested" => Hippy.IPP.Orientation,
+    "image-orientation" => Hippy.IPP.Orientation,
+    "input-orientation-requested" => Hippy.IPP.Orientation,
     "landscape-orientation-requested-preferred" => Hippy.IPP.Orientation,
-    "printer-wifi-state" => Hippy.IPP.PrinterWifiState
+    "media-source-feed-orientation" => Hippy.IPP.Orientation,
+    "document-state" => Hippy.IPP.DocumentState,
+    "system-state" => Hippy.IPP.SystemState,
+    "resource-state" => Hippy.IPP.ResourceState,
+    "power-state" => Hippy.IPP.PowerState,
+    "end-power-state" => Hippy.IPP.PowerState,
+    "request-power-state" => Hippy.IPP.PowerState,
+    "start-power-state" => Hippy.IPP.PowerState,
+    "client-type" => Hippy.IPP.ClientType,
+    "transmission-status" => Hippy.IPP.TransmissionStatus
   }
 
   defp get_enum_module(attribute) do

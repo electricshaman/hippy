@@ -9,6 +9,13 @@
   request without one, so code that encodes requests directly needs to set it.
 - An `https://` printer URI is now sent as `ipps://` in the `printer-uri` attribute instead of
   `ipp://`.
+- Enum values are now checked against the IANA IPP registry, which changes how some values
+  decode:
+  - `printer-wifi-state` is decoded (e.g. `:off`, `:on`, `:not_configured`) instead of being
+    left as an integer.
+  - `Hippy.IPP.Finishing.fold_accordian` is now `fold_accordion`, as in the registry, so
+    finishing 90 decodes to `:fold_accordion`. `fold_accordian/0` still works but is deprecated.
+  - Newly supported enum attributes (see Added) decode to atoms instead of integers.
 - `Hippy.IPP.JobState` no longer has a `nil` state for the value 0, which isn't a job state in
   RFC 8011. A `job-state` of 0 is now left as the integer 0, like other unknown enum values.
 
@@ -21,6 +28,17 @@
 
 ### Added
 
+- Enum modules for `document-state`, `system-state`, `resource-state`, `power-state`,
+  `client-type` and `transmission-status`, and decoding of the attributes the registry defines
+  in terms of other enums: `input-orientation-requested`, `image-orientation`,
+  `media-source-feed-orientation`, `input-quality`, `output-device-job-states`, `fetch-status-code`
+  and `start-`/`end-`/`request-power-state`.
+- `Hippy.IPP.Operation` has every operation in the IANA registry (66 more, including document,
+  resource and system operations).
+- `Hippy.Response` has `subscription_attributes`, `event_notification_attributes`,
+  `resource_attributes`, `document_attributes` and `system_attributes` fields, and
+  `unknown_attributes` now holds attributes from group tags IANA hasn't assigned.
+- The encoder supports out-of-band values, e.g. `{:delete_attribute, "job-hold-until", nil}`.
 - `Hippy.Response.job/1`, `jobs/1`, `printer/1`, `operation/1` and `unsupported/1` return
   attributes as maps, e.g. `Hippy.Response.job(res)["job-id"]`.
 - `Hippy.send_operation/2` and `Hippy.Server.send_request/3` accept `req_options:` for one
@@ -43,6 +61,9 @@
 
 ### Fixes
 
+- Responses with subscription, event notification, resource, document or system attribute
+  groups, with `not-settable`, `delete-attribute` or `admin-define` values, or with value tags
+  reserved for future use no longer crash the decoder.
 - Setting `headers:` in `req_options` no longer drops the `application/ipp` content type.
 - `ipp://` URIs without a port now connect to IPP's default port 631 instead of port 80.
 - `Hippy.Encoder.encode/1` raises `ArgumentError` for an attribute it can't encode, instead of

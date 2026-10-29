@@ -26,10 +26,13 @@ defmodule Hippy.DeprecatedTest do
 
       assert old.__info__(:functions) |> Enum.sort() == new.__info__(:functions) |> Enum.sort()
 
+      already_deprecated = Map.new(new.__info__(:deprecated))
+
       for {fun, arity} <- new.__info__(:functions) do
-        assert {{fun, arity}, "Use #{inspect(new)}.#{fun}/#{arity} instead"} in old.__info__(
-                 :deprecated
-               )
+        message =
+          Map.get(already_deprecated, {fun, arity}, "Use #{inspect(new)}.#{fun}/#{arity} instead")
+
+        assert {{fun, arity}, message} in old.__info__(:deprecated)
       end
     end
   end
@@ -38,6 +41,12 @@ defmodule Hippy.DeprecatedTest do
     assert apply(Hippy.Protocol.Orientation, :landscape, []) == Hippy.IPP.Orientation.landscape()
     assert apply(Hippy.Protocol.JobState, :decode, [9]) == {:ok, :completed}
     assert apply(Hippy.Protocol.Enum, :decode, ["job-state", 9]) == {:ok, :completed}
+    assert apply(Hippy.Protocol.Finishing, :fold_accordian, []) == 90
+    assert apply(Hippy.IPP.Finishing, :fold_accordian, []) == 90
+
+    assert {{:fold_accordian, 0}, "Use fold_accordion/0 instead"} in Hippy.IPP.Finishing.__info__(
+             :deprecated
+           )
   end
 
   test "use Hippy.Protocol.Enum still defines an enum, with a warning" do

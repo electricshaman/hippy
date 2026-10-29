@@ -58,7 +58,7 @@ defmodule Hippy.IPP.Finishing do
     punch_multiple_top: 87,
     punch_multiple_right: 88,
     punch_multiple_bottom: 89,
-    fold_accordian: 90,
+    fold_accordion: 90,
     fold_double_gate: 91,
     fold_gate: 92,
     fold_half: 93,
@@ -71,4 +71,7 @@ defmodule Hippy.IPP.Finishing do
     fold_z: 100,
     fold_engineering_z: 101
   }
+
+  @deprecated "Use fold_accordion/0 instead"
+  def fold_accordian, do: fold_accordion()
 end

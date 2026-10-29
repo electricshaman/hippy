@@ -18,6 +18,15 @@ defmodule Hippy.Encoder do
     :mime_media_type
   ]
 
+  @out_of_band_syntaxes [
+    :unsupported,
+    :unknown,
+    :no_value,
+    :not_settable,
+    :delete_attribute,
+    :admin_define
+  ]
+
   @doc """
   Encodes an IPP request into its binary form.
 
@@ -29,6 +38,8 @@ defmodule Hippy.Encoder do
     * `:text_with_language` and `:name_with_language` take `{language, text}`.
     * `:datetime` takes a `DateTime`, `:range_of_integer` a `Range`, and `:resolution` a
       `Hippy.PrintResolution`.
+    * Out-of-band syntaxes (`:no_value`, `:delete_attribute`, `:not_settable`, `:admin_define`,
+      `:unknown`, `:unsupported`) ignore the value, e.g. `{:delete_attribute, "job-hold-until", nil}`.
     * `:collection` takes a map of member names to `{syntax, value}` (or `{syntax, nil, value}`).
       A list of those encodes a multi-valued member.
 
@@ -74,6 +85,10 @@ defmodule Hippy.Encoder do
 
   defp encode_attribute(attribute) do
     raise ArgumentError, "invalid attribute #{inspect(attribute)}"
+  end
+
+  defp encode_value(syntax, _name, _value) when syntax in @out_of_band_syntaxes do
+    <<0::16>>
   end
 
   defp encode_value(syntax, _name, value)

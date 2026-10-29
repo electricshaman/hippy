@@ -7,12 +7,26 @@ defmodule Hippy.Protocol.Deprecated do
     to = Macro.expand(to, __CALLER__)
     Code.ensure_compiled!(to)
 
+    deprecated = Map.new(to.__info__(:deprecated))
+
     for {name, arity} <- to.__info__(:functions) do
       args = Macro.generate_arguments(arity, __MODULE__)
 
-      quote do
-        @deprecated unquote("Use #{inspect(to)}.#{name}/#{arity} instead")
-        defdelegate unquote(name)(unquote_splicing(args)), to: unquote(to)
+      case deprecated do
+        # Already deprecated in the new module: keep its message, and call it with apply/3 so
+        # Hippy itself doesn't get a deprecation warning.
+        %{{^name, ^arity} => message} ->
+          quote do
+            @deprecated unquote(message)
+            def unquote(name)(unquote_splicing(args)),
+              do: apply(unquote(to), unquote(name), unquote(args))
+          end
+
+        _ ->
+          quote do
+            @deprecated unquote("Use #{inspect(to)}.#{name}/#{arity} instead")
+            defdelegate unquote(name)(unquote_splicing(args)), to: unquote(to)
+          end
       end
     end
   end

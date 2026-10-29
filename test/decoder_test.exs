@@ -57,13 +57,13 @@ defmodule Hippy.DecoderTest do
       Decoder.decode(
         response(
           <<0x04>> <>
-            enum("document-state", 3) <>
+            enum("x-unknown-state", 3) <>
             enum("finishings-supported", 0x40000001) <> enum("printer-state", 3)
         )
       )
 
     assert res.printer_attributes == [
-             {:enum, "document-state", 3},
+             {:enum, "x-unknown-state", 3},
              {:enum, "finishings-supported", 0x40000001},
              {:enum, "printer-state", :idle}
            ]
@@ -157,5 +157,62 @@ defmodule Hippy.DecoderTest do
              {:keyword, "types", ["a", "b", "c"]},
              {:keyword, "sheet-back", "normal"}
            ]
+  end
+
+  describe "groups and values added after RFC 8011" do
+    test "subscription, event notification, resource and document groups are kept per group" do
+      for {tag, field} <- [
+            {0x06, :subscription_attributes},
+            {0x07, :event_notification_attributes},
+            {0x08, :resource_attributes},
+            {0x09, :document_attributes}
+          ] do
+        res =
+          Decoder.decode(response(<<tag>> <> keyword("a", "1") <> <<tag>> <> keyword("a", "2")))
+
+        assert res[field] == [[{:keyword, "a", "1"}], [{:keyword, "a", "2"}]]
+      end
+    end
+
+    test "system attributes are a single group" do
+      res = Decoder.decode(response(<<0x0A>> <> keyword("system-state-reasons", "none")))
+      assert res.system_attributes == [{:keyword, "system-state-reasons", "none"}]
+    end
+
+    test "group tags not assigned by IANA go to unknown_attributes" do
+      res =
+        Decoder.decode(response(<<0x0B>> <> keyword("x", "1") <> <<0x04>> <> keyword("y", "2")))
+
+      assert res.unknown_attributes == [{:keyword, "x", "1"}]
+      assert res.printer_attributes == [{:keyword, "y", "2"}]
+    end
+
+    test "out-of-band values" do
+      out_of_band = fn tag, name -> <<tag, byte_size(name)::16, name::binary, 0::16>> end
+
+      res =
+        Decoder.decode(
+          response(
+            <<0x04>> <>
+              out_of_band.(0x15, "printer-name") <>
+              out_of_band.(0x16, "job-hold-until") <>
+              out_of_band.(0x17, "media") <>
+              out_of_band.(0x13, "x") <> out_of_band.(0x1F, "y")
+          )
+        )
+
+      assert res.printer_attributes == [
+               {:not_settable, "printer-name", :not_settable},
+               {:delete_attribute, "job-hold-until", :delete_attribute},
+               {:admin_define, "media", :admin_define},
+               {:no_value, "x", :no_value},
+               {:out_of_band, "y", :out_of_band}
+             ]
+    end
+
+    test "syntaxes reserved for future use are kept as raw bytes" do
+      res = Decoder.decode(response(<<0x04, 0x60, 1::16, "x", 2::16, 1, 2>>))
+      assert res.printer_attributes == [{:octet_string, "x", <<1, 2>>}]
+    end
   end
 end

@@ -5,6 +5,28 @@ defmodule Hippy.Decoder do
 
   require Logger
 
+  @groups [
+    :operation_attributes,
+    :job_attributes,
+    :printer_attributes,
+    :unsupported_attributes,
+    :subscription_attributes,
+    :event_notification_attributes,
+    :resource_attributes,
+    :document_attributes,
+    :system_attributes,
+    :unknown_attributes
+  ]
+
+  # Groups that can appear more than once (e.g. one per job) are kept as a list of groups.
+  @repeated_groups [
+    :job_attributes,
+    :subscription_attributes,
+    :event_notification_attributes,
+    :resource_attributes,
+    :document_attributes
+  ]
+
   @doc "Decodes an IPP response from its binary into a response struct."
   def decode(bin) do
     {%Hippy.Response{}, bin}
@@ -48,15 +70,7 @@ defmodule Hippy.Decoder do
 
   defp parse_groups(res, acc, <<0x03, bin::binary>>) do
     # End of groups
-    groups = [
-      :job_attributes,
-      :operation_attributes,
-      :printer_attributes,
-      :unsupported_attributes,
-      :unknown_attributes
-    ]
-
-    {finish_groups(groups, res), acc, bin}
+    {finish_groups(@groups, res), acc, bin}
   end
 
   defp parse_groups(res, acc, <<0x04, bin::binary>>) do
@@ -69,6 +83,16 @@ defmodule Hippy.Decoder do
     parse_attributes(:unsupported_attributes, res, acc, bin)
   end
 
+  defp parse_groups(res, acc, <<tag, bin::binary>>) when tag in 0x06..0x0A do
+    {:ok, group} = Hippy.IPP.DelimiterTag.decode(tag)
+    parse_attributes(group, res, acc, bin)
+  end
+
+  defp parse_groups(res, acc, <<tag, bin::binary>>) when tag in 0x00..0x0F do
+    # Group tags not assigned by IANA.
+    parse_attributes(:unknown_attributes, res, acc, bin)
+  end
+
   defp finish_groups(groups, res) do
     Enum.reduce(groups, res, fn group, res ->
       val = Enum.reverse(res[group]) |> merge_duplicates(group)
@@ -76,7 +100,7 @@ defmodule Hippy.Decoder do
     end)
   end
 
-  defp merge_duplicates(groups, :job_attributes) do
+  defp merge_duplicates(groups, group) when group in @repeated_groups do
     Enum.map(groups, &merge_duplicates(&1, nil))
   end
 
@@ -101,7 +125,7 @@ defmodule Hippy.Decoder do
     end)
   end
 
-  defp parse_attributes(group, res, acc, <<octet, _::binary>> = bin) when octet in 0x00..0x05 do
+  defp parse_attributes(group, res, acc, <<octet, _::binary>> = bin) when octet in 0x00..0x0F do
     Map.put(res, group, add_to_group(group, res, acc))
     |> parse_groups([], bin)
   end
@@ -123,7 +147,7 @@ defmodule Hippy.Decoder do
     [Hippy.AttributeTransform.handle_attribute(attribute) | acc]
   end
 
-  defp add_to_group(:job_attributes = group, res, acc) do
+  defp add_to_group(group, res, acc) when group in @repeated_groups do
     [Enum.reverse(acc) | res[group]]
   end
 
@@ -137,28 +161,20 @@ defmodule Hippy.Decoder do
     %{res | data: bin}
   end
 
-  defp parse_attribute(<<0x10, 0::32, bin::binary>>) do
-    {{:unsupported, nil, :unsupported}, bin}
-  end
+  defp parse_attribute(
+         <<tag, nlen::16-signed, name::size(nlen)-binary, vlen::16-signed, _::size(vlen)-binary,
+           bin::binary>>
+       )
+       when tag in 0x10..0x1F do
+    # Out-of-band values (unsupported, unknown, no-value, not-settable, delete-attribute,
+    # admin-define) have no value of their own, so the syntax is used as the value.
+    syntax =
+      case Hippy.IPP.ValueTag.decode(tag) do
+        {:ok, syntax} -> syntax
+        {:error, _} -> :out_of_band
+      end
 
-  defp parse_attribute(<<0x10, len::16-signed, name::size(len)-binary, 0::16, bin::binary>>) do
-    {{:unsupported, name, :unsupported}, bin}
-  end
-
-  defp parse_attribute(<<0x12, 0::32, bin::binary>>) do
-    {{:unknown, nil, :unknown}, bin}
-  end
-
-  defp parse_attribute(<<0x12, len::16-signed, name::size(len)-binary, 0::16, bin::binary>>) do
-    {{:unknown, name, :unknown}, bin}
-  end
-
-  defp parse_attribute(<<0x13, 0::32, bin::binary>>) do
-    {{:no_value, nil, :no_value}, bin}
-  end
-
-  defp parse_attribute(<<0x13, len::16-signed, name::size(len)-binary, 0::16, bin::binary>>) do
-    {{:no_value, name, :no_value}, bin}
+    {{syntax, if(name == "", do: nil, else: name), syntax}, bin}
   end
 
   defp parse_attribute(
@@ -395,6 +411,15 @@ defmodule Hippy.Decoder do
            value::size(vlen)-binary, bin::binary>>
        ) do
     {{:mime_media_type, name, value}, bin}
+  end
+
+  defp parse_attribute(
+         <<tag, nlen::16-signed, name::size(nlen)-binary, vlen::16-signed,
+           value::size(vlen)-binary, bin::binary>>
+       )
+       when tag in 0x60..0x7F do
+    # Syntaxes reserved for future use (and the 0x7F extension tag) are kept as raw bytes.
+    {{:octet_string, if(name == "", do: nil, else: name), value}, bin}
   end
 
   defp with_language_syntax(0x35), do: :text_with_language

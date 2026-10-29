@@ -1,5 +1,12 @@
 defmodule Hippy.IPP.ValueTag do
   use Hippy.IPP.Enum, %{
+    # Out-of-band values, which have no value of their own.
+    unsupported: 0x10,
+    unknown: 0x12,
+    no_value: 0x13,
+    not_settable: 0x15,
+    delete_attribute: 0x16,
+    admin_define: 0x17,
     integer: 0x21,
     boolean: 0x22,
     enum: 0x23,

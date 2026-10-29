@@ -1,0 +1,1191 @@
+{
+  "delimiter_tags": {
+    "1": "operation-attributes-tag",
+    "10": "system-attributes-tag",
+    "2": "job-attributes-tag",
+    "3": "end-of-attributes-tag",
+    "4": "printer-attributes-tag",
+    "5": "unsupported-attributes-tag",
+    "6": "subscription-attributes-tag",
+    "7": "event-notification-attributes-tag",
+    "8": "resource-attributes-tag",
+    "9": "document-attributes-tag"
+  },
+  "enum_aliases": {
+    "end-power-state": "power-state",
+    "fetch-status-code": "status-code",
+    "finishings-default": "finishings",
+    "finishings-ready": "finishings",
+    "finishings-supported": "finishings",
+    "image-orientation": "orientation-requested",
+    "image-orientation-default": "orientation-requested",
+    "image-orientation-supported": "orientation-requested",
+    "input-orientation-requested": "orientation-requested",
+    "input-orientation-requested-supported": "orientation-requested",
+    "input-quality": "print-quality",
+    "input-quality-supported": "print-quality",
+    "media-source-feed-orientation": "orientation-requested",
+    "orientation-requested-default": "orientation-requested",
+    "orientation-requested-supported": "orientation-requested",
+    "output-device-job-states": "job-state",
+    "print-quality-default": "print-quality",
+    "print-quality-supported": "print-quality",
+    "request-power-state": "power-state",
+    "start-power-state": "power-state"
+  },
+  "enums": {
+    "client-type": {
+      "3": {
+        "name": "application",
+        "status": null
+      },
+      "4": {
+        "name": "operating-system",
+        "status": null
+      },
+      "5": {
+        "name": "driver",
+        "status": null
+      },
+      "6": {
+        "name": "other",
+        "status": null
+      }
+    },
+    "document-state": {
+      "3": {
+        "name": "pending",
+        "status": null
+      },
+      "5": {
+        "name": "processing",
+        "status": null
+      },
+      "6": {
+        "name": "processing-stopped",
+        "status": null
+      },
+      "7": {
+        "name": "canceled",
+        "status": null
+      },
+      "8": {
+        "name": "aborted",
+        "status": null
+      },
+      "9": {
+        "name": "completed",
+        "status": null
+      }
+    },
+    "finishings": {
+      "75": {
+        "name": "punch-dual-top",
+        "status": null
+      },
+      "16": {
+        "name": "laminate",
+        "status": null
+      },
+      "90": {
+        "name": "fold-accordion",
+        "status": null
+      },
+      "7": {
+        "name": "bind",
+        "status": null
+      },
+      "23": {
+        "name": "staple-bottom-right",
+        "status": null
+      },
+      "4": {
+        "name": "staple",
+        "status": null
+      },
+      "32": {
+        "name": "staple-triple-left",
+        "status": null
+      },
+      "14": {
+        "name": "jog-offset(deprecated)",
+        "status": null
+      },
+      "70": {
+        "name": "punch-top-left",
+        "status": null
+      },
+      "50": {
+        "name": "bind-left",
+        "status": null
+      },
+      "29": {
+        "name": "staple-dual-top",
+        "status": null
+      },
+      "52": {
+        "name": "bind-right",
+        "status": null
+      },
+      "94": {
+        "name": "fold-half-z",
+        "status": null
+      },
+      "33": {
+        "name": "staple-triple-top",
+        "status": null
+      },
+      "95": {
+        "name": "fold-left-gate",
+        "status": null
+      },
+      "87": {
+        "name": "punch-multiple-top",
+        "status": null
+      },
+      "35": {
+        "name": "staple-triple-bottom",
+        "status": null
+      },
+      "91": {
+        "name": "fold-double-gate",
+        "status": null
+      },
+      "97": {
+        "name": "fold-parallel",
+        "status": null
+      },
+      "101": {
+        "name": "fold-engineering-z",
+        "status": null
+      },
+      "73": {
+        "name": "punch-bottom-right",
+        "status": null
+      },
+      "13": {
+        "name": "booklet-maker",
+        "status": null
+      },
+      "15": {
+        "name": "coat",
+        "status": null
+      },
+      "77": {
+        "name": "punch-dual-bottom",
+        "status": null
+      },
+      "76": {
+        "name": "punch-dual-right",
+        "status": null
+      },
+      "84": {
+        "name": "punch-quad-right",
+        "status": null
+      },
+      "8": {
+        "name": "saddle-stitch",
+        "status": null
+      },
+      "80": {
+        "name": "punch-triple-right",
+        "status": null
+      },
+      "63": {
+        "name": "trim-after-job",
+        "status": null
+      },
+      "86": {
+        "name": "punch-multiple-left",
+        "status": null
+      },
+      "83": {
+        "name": "punch-quad-top",
+        "status": null
+      },
+      "99": {
+        "name": "fold-right-gate",
+        "status": null
+      },
+      "25": {
+        "name": "edge-stitch-top",
+        "status": null
+      },
+      "98": {
+        "name": "fold-poster",
+        "status": null
+      },
+      "96": {
+        "name": "fold-letter",
+        "status": null
+      },
+      "21": {
+        "name": "staple-bottom-left",
+        "status": null
+      },
+      "53": {
+        "name": "bind-bottom",
+        "status": null
+      },
+      "6": {
+        "name": "cover",
+        "status": null
+      },
+      "9": {
+        "name": "edge-stitch",
+        "status": null
+      },
+      "22": {
+        "name": "staple-top-right",
+        "status": null
+      },
+      "60": {
+        "name": "trim-after-pages",
+        "status": null
+      },
+      "62": {
+        "name": "trim-after-copies",
+        "status": null
+      },
+      "89": {
+        "name": "punch-multiple-bottom",
+        "status": null
+      },
+      "71": {
+        "name": "punch-bottom-left",
+        "status": null
+      },
+      "34": {
+        "name": "staple-triple-right",
+        "status": null
+      },
+      "79": {
+        "name": "punch-triple-top",
+        "status": null
+      },
+      "10": {
+        "name": "fold",
+        "status": null
+      },
+      "51": {
+        "name": "bind-top",
+        "status": null
+      },
+      "74": {
+        "name": "punch-dual-left",
+        "status": null
+      },
+      "12": {
+        "name": "bale",
+        "status": null
+      },
+      "28": {
+        "name": "staple-dual-left",
+        "status": null
+      },
+      "88": {
+        "name": "punch-multiple-right",
+        "status": null
+      },
+      "81": {
+        "name": "punch-triple-bottom",
+        "status": null
+      },
+      "92": {
+        "name": "fold-gate",
+        "status": null
+      },
+      "24": {
+        "name": "edge-stitch-left",
+        "status": null
+      },
+      "30": {
+        "name": "staple-dual-right",
+        "status": null
+      },
+      "11": {
+        "name": "trim",
+        "status": null
+      },
+      "20": {
+        "name": "staple-top-left",
+        "status": null
+      },
+      "3": {
+        "name": "none",
+        "status": null
+      },
+      "93": {
+        "name": "fold-half",
+        "status": null
+      },
+      "26": {
+        "name": "edge-stitch-right",
+        "status": null
+      },
+      "5": {
+        "name": "punch",
+        "status": null
+      },
+      "85": {
+        "name": "punch-quad-bottom",
+        "status": null
+      },
+      "72": {
+        "name": "punch-top-right",
+        "status": null
+      },
+      "100": {
+        "name": "fold-z",
+        "status": null
+      },
+      "78": {
+        "name": "punch-triple-left",
+        "status": null
+      },
+      "27": {
+        "name": "edge-stitch-bottom",
+        "status": null
+      },
+      "31": {
+        "name": "staple-dual-bottom",
+        "status": null
+      },
+      "82": {
+        "name": "punch-quad-left",
+        "status": null
+      },
+      "61": {
+        "name": "trim-after-documents",
+        "status": null
+      }
+    },
+    "job-state": {
+      "3": {
+        "name": "pending",
+        "status": null
+      },
+      "4": {
+        "name": "pending-held",
+        "status": null
+      },
+      "5": {
+        "name": "processing",
+        "status": null
+      },
+      "6": {
+        "name": "processing-stopped",
+        "status": null
+      },
+      "7": {
+        "name": "canceled",
+        "status": null
+      },
+      "8": {
+        "name": "aborted",
+        "status": null
+      },
+      "9": {
+        "name": "completed",
+        "status": null
+      }
+    },
+    "operations-supported": {
+      "49": {
+        "name": "Schedule-Job-After",
+        "status": null
+      },
+      "75": {
+        "name": "Allocate-Printer-Resources",
+        "status": null
+      },
+      "36": {
+        "name": "Pause-Printer-After-Current-Job",
+        "status": null
+      },
+      "16": {
+        "name": "Pause-Printer",
+        "status": null
+      },
+      "55": {
+        "name": "Set-Document-Attributes",
+        "status": null
+      },
+      "90": {
+        "name": "Enable-All-Printers",
+        "status": null
+      },
+      "7": {
+        "name": "Send-URI",
+        "status": "deprecated"
+      },
+      "23": {
+        "name": "Create-Job-Subscriptions",
+        "status": null
+      },
+      "44": {
+        "name": "Reprocess-Job(deprecated)",
+        "status": null
+      },
+      "4": {
+        "name": "Validate-Job",
+        "status": null
+      },
+      "43": {
+        "name": "Startup-Printer",
+        "status": null
+      },
+      "32": {
+        "name": "Get-Resources",
+        "status": null
+      },
+      "14": {
+        "name": "Restart-Job(deprecated)",
+        "status": null
+      },
+      "70": {
+        "name": "Deregister-Output-Device",
+        "status": null
+      },
+      "52": {
+        "name": "Get-Document-Attributes",
+        "status": null
+      },
+      "94": {
+        "name": "Pause-All-Printers-After-Current-Job",
+        "status": null
+      },
+      "42": {
+        "name": "Shutdown-Printer",
+        "status": null
+      },
+      "19": {
+        "name": "Set-Printer-Attributes",
+        "status": null
+      },
+      "39": {
+        "name": "Deactivate-Printer(deprecated)",
+        "status": null
+      },
+      "64": {
+        "name": "Acknowledge-Identify-Printer",
+        "status": null
+      },
+      "95": {
+        "name": "Register-Output-Device",
+        "status": null
+      },
+      "87": {
+        "name": "Create-Resource-Subscriptions",
+        "status": null
+      },
+      "48": {
+        "name": "Promote-Job",
+        "status": null
+      },
+      "35": {
+        "name": "Disable-Printer",
+        "status": null
+      },
+      "91": {
+        "name": "Get-System-Attributes",
+        "status": null
+      },
+      "97": {
+        "name": "Resume-All-Printers",
+        "status": null
+      },
+      "101": {
+        "name": "Get-Printer-Resources",
+        "status": null
+      },
+      "73": {
+        "name": "Update-Output-Device-Attributes",
+        "status": null
+      },
+      "13": {
+        "name": "Release-Job",
+        "status": null
+      },
+      "104": {
+        "name": "Acknowledge-Encrypted-Job-Attributes",
+        "status": null
+      },
+      "77": {
+        "name": "Deallocate-Printer-Resources",
+        "status": null
+      },
+      "68": {
+        "name": "Get-Output-Device-Attributes",
+        "status": null
+      },
+      "76": {
+        "name": "Create-Printer",
+        "status": null
+      },
+      "84": {
+        "name": "Install-Resource",
+        "status": null
+      },
+      "8": {
+        "name": "Cancel-Job",
+        "status": null
+      },
+      "2": {
+        "name": "Print-Job",
+        "status": null
+      },
+      "80": {
+        "name": "Shutdown-One-Printer",
+        "status": null
+      },
+      "63": {
+        "name": "Acknowledge-Document",
+        "status": null
+      },
+      "102": {
+        "name": "Get-User-Printer-Attributes",
+        "status": null
+      },
+      "67": {
+        "name": "Fetch-Job",
+        "status": null
+      },
+      "86": {
+        "name": "Set-Resource-Attributes",
+        "status": null
+      },
+      "83": {
+        "name": "Create-Resource",
+        "status": null
+      },
+      "57": {
+        "name": "Cancel-My-Jobs",
+        "status": null
+      },
+      "47": {
+        "name": "Resume-Job",
+        "status": null
+      },
+      "99": {
+        "name": "Shutdown-All-Printers",
+        "status": null
+      },
+      "25": {
+        "name": "Get-Subscriptions",
+        "status": null
+      },
+      "56": {
+        "name": "Cancel-Jobs",
+        "status": null
+      },
+      "98": {
+        "name": "Set-System-Attributes",
+        "status": null
+      },
+      "96": {
+        "name": "Restart-System",
+        "status": null
+      },
+      "69": {
+        "name": "Update-Active-Jobs",
+        "status": null
+      },
+      "21": {
+        "name": "Get-Printer-Supported-Values",
+        "status": null
+      },
+      "37": {
+        "name": "Hold-New-Jobs",
+        "status": null
+      },
+      "53": {
+        "name": "Get-Documents",
+        "status": null
+      },
+      "6": {
+        "name": "Send-Document",
+        "status": null
+      },
+      "9": {
+        "name": "Get-Job-Attributes",
+        "status": null
+      },
+      "22": {
+        "name": "Create-Printer-Subscriptions",
+        "status": null
+      },
+      "54": {
+        "name": "Delete-Document(obsolete)",
+        "status": null
+      },
+      "60": {
+        "name": "Identify-Printer",
+        "status": null
+      },
+      "38": {
+        "name": "Release-Held-New-Jobs",
+        "status": null
+      },
+      "62": {
+        "name": "Add-Document-Images",
+        "status": null
+      },
+      "89": {
+        "name": "Disable-All-Printers",
+        "status": null
+      },
+      "71": {
+        "name": "Update-Document-Status",
+        "status": null
+      },
+      "58": {
+        "name": "Resubmit-Job",
+        "status": null
+      },
+      "34": {
+        "name": "Enable-Printer",
+        "status": null
+      },
+      "79": {
+        "name": "Get-Printers",
+        "status": null
+      },
+      "10": {
+        "name": "Get-Jobs",
+        "status": null
+      },
+      "18": {
+        "name": "Purge-Jobs(deprecated)",
+        "status": null
+      },
+      "45": {
+        "name": "Cancel-Current-Job",
+        "status": null
+      },
+      "51": {
+        "name": "Cancel-Document",
+        "status": null
+      },
+      "74": {
+        "name": "Get-Next-Document-Data",
+        "status": null
+      },
+      "12": {
+        "name": "Hold-Job",
+        "status": null
+      },
+      "28": {
+        "name": "Get-Notifications",
+        "status": null
+      },
+      "88": {
+        "name": "Create-System-Subscriptions",
+        "status": null
+      },
+      "81": {
+        "name": "Startup-One-Printer",
+        "status": null
+      },
+      "41": {
+        "name": "Restart-Printer",
+        "status": null
+      },
+      "92": {
+        "name": "Get-System-Supported-Values",
+        "status": null
+      },
+      "40": {
+        "name": "Activate-Printer(deprecated)",
+        "status": null
+      },
+      "24": {
+        "name": "Get-Subscription-Attributes",
+        "status": null
+      },
+      "65": {
+        "name": "Acknowledge-Job",
+        "status": null
+      },
+      "17": {
+        "name": "Resume-Printer",
+        "status": null
+      },
+      "30": {
+        "name": "Get-Resource-Attributes",
+        "status": null
+      },
+      "105": {
+        "name": "Fetch-Encrypted-Job-Attributes",
+        "status": null
+      },
+      "66": {
+        "name": "Fetch-Document",
+        "status": null
+      },
+      "11": {
+        "name": "Get-Printer-Attributes",
+        "status": null
+      },
+      "20": {
+        "name": "Set-Job-Attributes",
+        "status": null
+      },
+      "59": {
+        "name": "Close-Job",
+        "status": null
+      },
+      "46": {
+        "name": "Suspend-Current-Job",
+        "status": null
+      },
+      "3": {
+        "name": "Print-URI",
+        "status": "deprecated"
+      },
+      "93": {
+        "name": "Pause-All-Printers",
+        "status": null
+      },
+      "26": {
+        "name": "Renew-Subscription",
+        "status": null
+      },
+      "5": {
+        "name": "Create-Job",
+        "status": null
+      },
+      "103": {
+        "name": "Restart-One-Printer",
+        "status": null
+      },
+      "85": {
+        "name": "Send-Resource-Data",
+        "status": null
+      },
+      "72": {
+        "name": "Update-Job-Status",
+        "status": null
+      },
+      "100": {
+        "name": "Startup-All-Printers",
+        "status": null
+      },
+      "78": {
+        "name": "Delete-Printer",
+        "status": null
+      },
+      "27": {
+        "name": "Cancel-Subscription",
+        "status": null
+      },
+      "106": {
+        "name": "Get-Encrypted-Job-Attributes",
+        "status": null
+      },
+      "82": {
+        "name": "Cancel-Resource",
+        "status": null
+      },
+      "61": {
+        "name": "Validate-Document",
+        "status": null
+      }
+    },
+    "orientation-requested": {
+      "3": {
+        "name": "portrait",
+        "status": null
+      },
+      "4": {
+        "name": "landscape",
+        "status": null
+      },
+      "5": {
+        "name": "reverse-landscape",
+        "status": null
+      },
+      "6": {
+        "name": "reverse-portrait",
+        "status": null
+      },
+      "7": {
+        "name": "none",
+        "status": null
+      }
+    },
+    "power-state": {
+      "75": {
+        "name": "hibernate-vendor5",
+        "status": null
+      },
+      "90": {
+        "name": "reset-hard",
+        "status": null
+      },
+      "23": {
+        "name": "on-vendor3",
+        "status": null
+      },
+      "44": {
+        "name": "suspend-vendor4",
+        "status": null
+      },
+      "43": {
+        "name": "suspend-vendor3",
+        "status": null
+      },
+      "32": {
+        "name": "standby-vendor2",
+        "status": null
+      },
+      "70": {
+        "name": "hibernate",
+        "status": null
+      },
+      "180": {
+        "name": "not-applicable",
+        "status": null
+      },
+      "50": {
+        "name": "reset-soft",
+        "status": null
+      },
+      "42": {
+        "name": "suspend-vendor2",
+        "status": null
+      },
+      "33": {
+        "name": "standby-vendor3",
+        "status": null
+      },
+      "160": {
+        "name": "reset-hard-graceful",
+        "status": null
+      },
+      "35": {
+        "name": "standby-vendor5",
+        "status": null
+      },
+      "73": {
+        "name": "hibernate-vendor3",
+        "status": null
+      },
+      "84": {
+        "name": "off-soft-vendor4",
+        "status": null
+      },
+      "80": {
+        "name": "off-soft",
+        "status": null
+      },
+      "83": {
+        "name": "off-soft-vendor3",
+        "status": null
+      },
+      "150": {
+        "name": "reset-soft-graceful",
+        "status": null
+      },
+      "25": {
+        "name": "on-vendor5",
+        "status": null
+      },
+      "130": {
+        "name": "off-hard-graceful",
+        "status": null
+      },
+      "21": {
+        "name": "on-vendor1",
+        "status": null
+      },
+      "22": {
+        "name": "on-vendor2",
+        "status": null
+      },
+      "60": {
+        "name": "off-hard",
+        "status": null
+      },
+      "140": {
+        "name": "reset-mbr-graceful",
+        "status": null
+      },
+      "71": {
+        "name": "hibernate-vendor1",
+        "status": null
+      },
+      "34": {
+        "name": "standby-vendor4",
+        "status": null
+      },
+      "45": {
+        "name": "suspend-vendor5",
+        "status": null
+      },
+      "74": {
+        "name": "hibernate-vendor4",
+        "status": null
+      },
+      "81": {
+        "name": "off-soft-vendor1",
+        "status": null
+      },
+      "41": {
+        "name": "suspend-vendor1",
+        "status": null
+      },
+      "40": {
+        "name": "suspend",
+        "status": null
+      },
+      "24": {
+        "name": "on-vendor4",
+        "status": null
+      },
+      "170": {
+        "name": "reset-init",
+        "status": null
+      },
+      "30": {
+        "name": "standby",
+        "status": null
+      },
+      "110": {
+        "name": "reset-nmi",
+        "status": null
+      },
+      "20": {
+        "name": "on",
+        "status": null
+      },
+      "85": {
+        "name": "off-soft-vendor5",
+        "status": null
+      },
+      "72": {
+        "name": "hibernate-vendor2",
+        "status": null
+      },
+      "100": {
+        "name": "reset-mbr",
+        "status": null
+      },
+      "190": {
+        "name": "no-change",
+        "status": null
+      },
+      "31": {
+        "name": "standby-vendor1",
+        "status": null
+      },
+      "82": {
+        "name": "off-soft-vendor2",
+        "status": null
+      },
+      "120": {
+        "name": "off-soft-graceful",
+        "status": null
+      }
+    },
+    "print-quality": {
+      "3": {
+        "name": "draft",
+        "status": null
+      },
+      "4": {
+        "name": "normal",
+        "status": null
+      },
+      "5": {
+        "name": "high",
+        "status": null
+      }
+    },
+    "printer-state": {
+      "3": {
+        "name": "idle",
+        "status": null
+      },
+      "4": {
+        "name": "processing",
+        "status": null
+      },
+      "5": {
+        "name": "stopped",
+        "status": null
+      }
+    },
+    "printer-wifi-state": {
+      "3": {
+        "name": "off",
+        "status": null
+      },
+      "4": {
+        "name": "not-configured",
+        "status": null
+      },
+      "5": {
+        "name": "not-visible",
+        "status": null
+      },
+      "6": {
+        "name": "cannot-join",
+        "status": null
+      },
+      "7": {
+        "name": "joining",
+        "status": null
+      },
+      "8": {
+        "name": "on",
+        "status": null
+      }
+    },
+    "resource-state": {
+      "3": {
+        "name": "pending",
+        "status": null
+      },
+      "4": {
+        "name": "available",
+        "status": null
+      },
+      "5": {
+        "name": "installed",
+        "status": null
+      },
+      "6": {
+        "name": "canceled",
+        "status": null
+      },
+      "7": {
+        "name": "aborted",
+        "status": null
+      }
+    },
+    "system-state": {
+      "3": {
+        "name": "idle",
+        "status": null
+      },
+      "4": {
+        "name": "processing",
+        "status": null
+      },
+      "5": {
+        "name": "stopped",
+        "status": null
+      }
+    },
+    "transmission-status": {
+      "3": {
+        "name": "pending",
+        "status": null
+      },
+      "4": {
+        "name": "pending-retry",
+        "status": null
+      },
+      "5": {
+        "name": "processing",
+        "status": null
+      },
+      "7": {
+        "name": "canceled",
+        "status": null
+      },
+      "8": {
+        "name": "aborted",
+        "status": null
+      },
+      "9": {
+        "name": "completed",
+        "status": null
+      }
+    }
+  },
+  "source": "https://www.iana.org/assignments/ipp-registrations/ipp-registrations.xml",
+  "status_codes": {
+    "1031": "client-error-gone",
+    "1026": "client-error-not-authenticated",
+    "1288": "server-error-job-canceled",
+    "1": "successful-ok-ignored-or-substituted-attributes",
+    "1042": "client-error-document-access-error",
+    "1037": "client-error-charset-not-supported",
+    "1281": "server-error-operation-not-supported",
+    "1030": "client-error-not-found",
+    "7": "successful-ok-events-complete",
+    "1040": "client-error-compression-error",
+    "1291": "server-error-too-many-jobs",
+    "1283": "server-error-version-not-supported",
+    "1290": "server-error-printer-is-deactivated",
+    "1036": "client-error-uri-scheme-not-supported",
+    "1287": "server-error-busy",
+    "1052": "client-error-account-info-needed",
+    "2": "successful-ok-conflicting-attributes",
+    "1282": "server-error-service-unavailable",
+    "1025": "client-error-forbidden",
+    "1043": "client-error-attributes-not-settable",
+    "1053": "client-error-account-closed",
+    "1027": "client-error-not-authorized",
+    "1044": "client-error-ignored-all-subscriptions",
+    "1028": "client-error-not-possible",
+    "1035": "client-error-attributes-or-values-not-supported",
+    "1286": "server-error-not-accepting-jobs",
+    "1292": "server-error-too-many-documents",
+    "1054": "client-error-account-limit-reached",
+    "1041": "client-error-document-format-error",
+    "1289": "server-error-multiple-document-jobs-not-supported",
+    "1056": "client-error-not-fetchable",
+    "1034": "client-error-document-format-not-supported",
+    "1049": "client-error-document-permission-error",
+    "1048": "client-error-document-password-error",
+    "1033": "client-error-request-value-too-long",
+    "1032": "client-error-request-entity-too-large",
+    "1055": "client-error-account-authorization-failed",
+    "1285": "server-error-temporary-error",
+    "1038": "client-error-conflicting-attributes",
+    "1024": "client-error-bad-request",
+    "1280": "server-error-internal-error",
+    "3": "successful-ok-ignored-subscriptions",
+    "5": "successful-ok-too-many-events",
+    "1050": "client-error-document-security-error",
+    "0": "successful-ok",
+    "1045": "client-error-too-many-subscriptions",
+    "1029": "client-error-timeout",
+    "1051": "client-error-document-unprintable-error",
+    "1039": "client-error-compression-not-supported",
+    "1284": "server-error-device-error"
+  },
+  "updated": "2026-05-07",
+  "value_tags": {
+    "127": "For extension using the next 4 octets - see\nNote above.",
+    "16": "unsupported",
+    "18": "unknown",
+    "19": "no-value",
+    "21": "not-settable",
+    "22": "delete-attribute",
+    "23": "admin-define",
+    "33": "integer",
+    "34": "boolean",
+    "35": "enum",
+    "48": "octetString with an unspecified format",
+    "49": "dateTime",
+    "50": "resolution",
+    "51": "rangeOfInteger",
+    "52": "begCollection",
+    "53": "textWithLanguage",
+    "54": "nameWithLanguage",
+    "55": "endCollection",
+    "65": "textWithoutLanguage",
+    "66": "nameWithoutLanguage",
+    "68": "keyword",
+    "69": "uri",
+    "70": "uriScheme",
+    "71": "charset",
+    "72": "naturalLanguage",
+    "73": "mimeMediaType",
+    "74": "memberAttrName"
+  }
+}

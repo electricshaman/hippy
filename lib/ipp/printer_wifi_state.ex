@@ -1,11 +1,12 @@
 defmodule Hippy.IPP.PrinterWifiState do
-  @moduledoc """
-  Not sure what these values represent yet! :)
-  """
+  @moduledoc "Values of the `printer-wifi-state` attribute, from the IANA IPP registry."
 
-  @behaviour Hippy.IPP.Enum
-
-  @impl Hippy.IPP.Enum
-  def decode(value), do: {:ok, value}
-  def decode!(value), do: value
+  use Hippy.IPP.Enum, %{
+    off: 3,
+    not_configured: 4,
+    not_visible: 5,
+    cannot_join: 6,
+    joining: 7,
+    on: 8
+  }
 end
