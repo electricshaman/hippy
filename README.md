@@ -15,6 +15,19 @@ Hippy uses [Req](https://hex.pm/packages/req) for HTTP and requires Elixir 1.15 
 config :hippy, req_options: [receive_timeout: 30_000]
 ```
 
+Enum attributes are decoded to atoms for common attributes such as `job-state` and `orientation-requested`, and left as integers otherwise. To decode other enum attributes (e.g. vendor extensions), define an enum and register it by attribute name. Registered enums take precedence over the built-in ones, and `xxx-default` and `xxx-supported` use the enum registered for `xxx`:
+
+```elixir
+defmodule MyApp.VendorState do
+  use Hippy.Protocol.Enum, %{idle: 0x01, busy: 0x02}
+end
+
+config :hippy, enums: %{
+  "x-vendor-state" => MyApp.VendorState,
+  "input-orientation-requested" => Hippy.Protocol.Orientation
+}
+```
+
 ## Usage Examples
 
 ### Print a PDF document

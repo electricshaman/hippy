@@ -1,10 +1,48 @@
 defmodule Hippy.Protocol.Enum do
+  @moduledoc """
+  Defines enums for IPP values, and decodes enum attributes in responses.
+
+  Define an enum from a map of names to values:
+
+      defmodule MyApp.VendorState do
+        use Hippy.Protocol.Enum, %{
+          idle: 0x01,
+          busy: 0x02
+        }
+      end
+
+  This generates a function per name (`MyApp.VendorState.busy()` returns `2`) along with
+  `encode/1`, `encode!/1`, `decode/1` and `decode!/1`.
+
+  ## Decoding attributes
+
+  Enum attributes in a response are decoded using the module registered for the attribute
+  name. Hippy registers modules for common attributes such as `job-state` and
+  `orientation-requested`. Register more, or override the built-in ones, with:
+
+      config :hippy, enums: %{
+        "x-vendor-state" => MyApp.VendorState,
+        "input-orientation-requested" => Hippy.Protocol.Orientation
+      }
+
+  When `xxx-default` or `xxx-supported` has no module registered, the module for `xxx` is
+  used. Values without a registered module, or not found in the enum, are left as integers.
+
+  A registered module doesn't have to use this macro, as long as it implements this
+  behaviour (see `Hippy.Protocol.PrinterType` for an example).
+  """
+
+  @doc "Decodes an enum value received from a printer."
+  @callback decode(value :: integer()) :: {:ok, term()} | {:error, term()}
+
   defmacro __using__(map) do
     generate(map)
   end
 
   def generate(map) do
     quote bind_quoted: [map: map] do
+      @behaviour Hippy.Protocol.Enum
+
       @left map
       @right map |> Enum.map(fn {k, v} -> {v, k} end) |> Map.new()
       @keys Map.keys(map)
@@ -42,6 +80,7 @@ defmodule Hippy.Protocol.Enum do
         end
       end
 
+      @impl Hippy.Protocol.Enum
       def decode(value) do
         case Map.fetch(@right, value) do
           {:ok, _key} = ok -> ok
@@ -71,27 +110,30 @@ defmodule Hippy.Protocol.Enum do
     end
   end
 
+  @builtin_enums %{
+    "job-state" => Hippy.Protocol.JobState,
+    "status-code" => Hippy.Protocol.StatusCode,
+    "printer-state" => Hippy.Protocol.PrinterState,
+    "printer-type" => Hippy.Protocol.PrinterType,
+    "operations-supported" => Hippy.Protocol.Operation,
+    "print-quality" => Hippy.Protocol.PrintQuality,
+    "finishings" => Hippy.Protocol.Finishing,
+    "finishings-ready" => Hippy.Protocol.Finishing,
+    "orientation-requested" => Hippy.Protocol.Orientation,
+    "landscape-orientation-requested-preferred" => Hippy.Protocol.Orientation,
+    "printer-wifi-state" => Hippy.Protocol.PrinterWifiState
+  }
+
   defp get_enum_module(attribute) do
-    %{
-      "job-state" => Hippy.Protocol.JobState,
-      "status-code" => Hippy.Protocol.StatusCode,
-      "printer-state" => Hippy.Protocol.PrinterState,
-      "printer-type" => Hippy.Protocol.PrinterType,
-      "operations-supported" => Hippy.Protocol.Operation,
-      "print-quality" => Hippy.Protocol.PrintQuality,
-      "print-quality-default" => Hippy.Protocol.PrintQuality,
-      "print-quality-supported" => Hippy.Protocol.PrintQuality,
-      "finishings" => Hippy.Protocol.Finishing,
-      "finishings-default" => Hippy.Protocol.Finishing,
-      "finishings-supported" => Hippy.Protocol.Finishing,
-      "finishings-ready" => Hippy.Protocol.Finishing,
-      "orientation-requested" => Hippy.Protocol.Orientation,
-      "orientation-requested-supported" => Hippy.Protocol.Orientation,
-      "orientation-requested-default" => Hippy.Protocol.Orientation,
-      "landscape-orientation-requested-preferred" => Hippy.Protocol.Orientation,
-      "printer-wifi-state" => Hippy.Protocol.PrinterWifiState
-    }
-    |> Map.fetch(attribute)
+    enums = Map.merge(@builtin_enums, Application.get_env(:hippy, :enums, %{}))
+
+    with :error <- Map.fetch(enums, attribute) do
+      # xxx-default and xxx-supported take values of the same enum as xxx.
+      case Regex.run(~r/^(.+)-(default|supported)$/, attribute) do
+        [_, base, _] -> Map.fetch(enums, base)
+        nil -> :error
+      end
+    end
   end
 end
 
