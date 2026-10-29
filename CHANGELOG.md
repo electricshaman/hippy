@@ -12,6 +12,8 @@
 
 ### Added
 
+- `Hippy.Response.job/1`, `jobs/1`, `printer/1`, `operation/1` and `unsupported/1` return
+  attributes as maps, e.g. `Hippy.Response.job(res)["job-id"]`.
 - `Hippy.send_operation/2` and `Hippy.Server.send_request/3` accept `req_options:` for one
   request, merged over `config :hippy, req_options: [...]`, so printers with different
   credentials or TLS settings can be used at the same time. `send_operation/2` also accepts

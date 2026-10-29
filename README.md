@@ -125,44 +125,32 @@ Hippy.Operation.GetJobs.new("http://localhost:631/printers/HP_Color_LaserJet")
  }}
 ```
 
-### Convert the response to a map for easier access by key
+### Convert the response to maps for easier access by key
 
-Note: `Hippy.AttributeGroup.to_map/1` currently doesn't support nested attribute groups such as when returning multiple jobs through the `Get-Jobs` IPP operation.  If given a list of attribute groups, instead of returning a list of maps, it will return the group at the head of the list.  If you wish to access other groups in the list, you can use `AttributeGroup.to_map/2` to provide an index for the nested group at the target index.  This behavior may change for `AttributeGroup.to_map/1` in the future, so if you intend to rely on a single map being returned, it would be advisable to use `AttributeGroup.to_map(response.job_attributes, 0)` in order to future-proof your code.
+`Hippy.Response` has functions that return attributes as maps of names to values:
 
 ```elixir
-response = %Hippy.Response{
-  data: "",
-  job_attributes: [
-    [
-      {:uri, "job-uri", "ipp://localhost:631/jobs/47"},
-      {:integer, "job-id", 47},
-      {:enum, "job-state", :pending},
-      {:text_without_language, "job-state-message", ""},
-      {:keyword, "job-state-reasons", "none"}
-    ]
-  ],
-  operation_attributes: [
-    [
-      {:charset, "attributes-charset", "utf-8"},
-      {:natural_language, "attributes-natural-language", "en"}
-    ]
-  ],
-  printer_attributes: [],
-  request_id: 1,
-  status_code: :successful_ok,
-  unknown_attributes: [],
-  version: %Hippy.IPPVersion{major: 1, minor: 1}
-}
+{:ok, res} = Hippy.Operation.PrintJob.new(printer_uri, doc) |> Hippy.send_operation()
 
-Hippy.AttributeGroup.to_map(response.job_attributes)
+Hippy.Response.job(res)
 %{
   "job-id" => 47,
   "job-state" => :pending,
   "job-state-message" => "",
   "job-state-reasons" => "none",
-  "job-uri" => "ipp://localhost:631/jobs/47"
+  "job-uri" => %URI{scheme: "ipp", host: "localhost", port: 631, path: "/jobs/47", ...}
 }
+
+Hippy.Response.job(res)["job-id"]
+47
 ```
+
+- `Hippy.Response.job/1`: the job, for responses about one job, such as Print-Job and Get-Job-Attributes.
+- `Hippy.Response.jobs/1`: a map per job, for Get-Jobs.
+- `Hippy.Response.printer/1`: printer attributes, for Get-Printer-Attributes.
+- `Hippy.Response.operation/1` and `Hippy.Response.unsupported/1`: operation attributes (such as `status-message`) and attributes the printer didn't support.
+
+Attributes with several values are lists. `Hippy.AttributeGroup.to_map/1` converts any list of attribute tuples the same way.
 
 ## Development
 
