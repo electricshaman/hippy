@@ -21,6 +21,8 @@ defmodule Hippy.Integration.CupsTest do
   @context Path.expand("cups", __DIR__)
   @credentials "hippy:hippy-pass"
   @tls [connect_options: [transport_opts: [verify: :verify_none]]]
+  @anonymous [req_options: @tls]
+  @user [req_options: @tls ++ [auth: {:basic, @credentials}]]
 
   setup_all do
     {_, 0} = docker(["build", "-q", "-t", @image, @context])
@@ -202,49 +204,60 @@ defmodule Hippy.Integration.CupsTest do
 
     test "anonymous cancel over HTTPS requires authentication", ctx do
       id = print!(PrintJob.new(printer(ctx.http, "held_cancel"), pdf()))
-      with_req_options(@tls)
+      op = CancelJob.new(printer(ctx.https, "held_cancel"), id)
 
-      assert {:error, {:http_error, 401, _}} =
-               Hippy.send_operation(CancelJob.new(printer(ctx.https, "held_cancel"), id))
+      assert {:error, {:http_error, 401, _}} = Hippy.send_operation(op, @anonymous)
     end
 
     test "authenticated user can cancel only their own jobs", ctx do
       anonymous_id = print!(PrintJob.new(printer(ctx.http, "held_cancel"), pdf()))
-      with_req_options(@tls ++ [auth: {:basic, @credentials}])
       uri = printer(ctx.https, "held_cancel")
 
       assert {:error, {:http_error, 403, _}} =
-               Hippy.send_operation(CancelJob.new(uri, anonymous_id))
+               Hippy.send_operation(CancelJob.new(uri, anonymous_id), @user)
 
-      id = print!(PrintJob.new(uri, pdf(), job_name: "Mine"))
-      assert job_attributes!(uri, id)["job-originating-user-name"] == "hippy"
+      id = print!(PrintJob.new(uri, pdf(), job_name: "Mine"), @user)
+      assert job_attributes!(uri, id, @user)["job-originating-user-name"] == "hippy"
 
-      assert send!(CancelJob.new(uri, id)).status_code == :successful_ok
-      assert job_attributes!(uri, id)["job-state"] == :canceled
-      assert send!(CancelJob.new(uri, id)).status_code == :client_error_not_possible
+      assert send!(CancelJob.new(uri, id), @user).status_code == :successful_ok
+      assert job_attributes!(uri, id, @user)["job-state"] == :canceled
+      assert send!(CancelJob.new(uri, id), @user).status_code == :client_error_not_possible
     end
   end
 
   describe "authentication and transport" do
     test "Basic auth over HTTPS", %{https: https} do
-      uri = printer(https, "secure")
+      op = GetPrinterAttributes.new(printer(https, "secure"))
+      wrong = [req_options: @tls ++ [auth: {:basic, "hippy:wrong"}]]
 
-      with_req_options(@tls)
-      assert {:error, {:http_error, 401, _}} = Hippy.send_operation(GetPrinterAttributes.new(uri))
+      assert {:error, {:http_error, 401, _}} = Hippy.send_operation(op, @anonymous)
+      assert {:error, {:http_error, 401, _}} = Hippy.send_operation(op, wrong)
+      assert send!(op, @user).status_code == :successful_ok
+      assert is_integer(print!(PrintJob.new(op.printer_uri, pdf()), @user))
+    end
 
-      with_req_options(@tls ++ [auth: {:basic, "hippy:wrong"}])
-      assert {:error, {:http_error, 401, _}} = Hippy.send_operation(GetPrinterAttributes.new(uri))
+    test "concurrent requests use their own credentials", %{https: https} do
+      op = GetPrinterAttributes.new(printer(https, "secure"))
 
-      with_req_options(@tls ++ [auth: {:basic, @credentials}])
-      assert send!(GetPrinterAttributes.new(uri)).status_code == :successful_ok
-      assert is_integer(print!(PrintJob.new(uri, pdf())))
+      results =
+        1..20
+        |> Enum.map(fn n -> if rem(n, 2) == 0, do: @user, else: @anonymous end)
+        |> Task.async_stream(&{&1, Hippy.send_operation(op, &1)}, max_concurrency: 20)
+        |> Enum.map(fn {:ok, result} -> result end)
+
+      for {opts, result} <- results do
+        if opts == @user do
+          assert {:ok, %Hippy.Response{status_code: :successful_ok}} = result
+        else
+          assert {:error, {:http_error, 401, _}} = result
+        end
+      end
     end
 
     test "ipps:// printer URI", %{https: https} do
-      with_req_options(@tls ++ [auth: {:basic, @credentials}])
       uri = String.replace(printer(https, "secure"), "https://", "ipps://")
 
-      assert send!(GetPrinterAttributes.new(uri)).status_code == :successful_ok
+      assert send!(GetPrinterAttributes.new(uri), @user).status_code == :successful_ok
     end
 
     test "self-signed certificate is rejected when verification is on", %{https: https} do
@@ -255,10 +268,10 @@ defmodule Hippy.Integration.CupsTest do
     end
 
     test "receive timeout surfaces as a transport error", %{http: http} do
-      with_req_options(receive_timeout: 1)
       op = PrintJob.new(printer(http, "raw"), :crypto.strong_rand_bytes(25 * 1024 * 1024))
 
-      assert {:error, %Req.TransportError{reason: :timeout}} = Hippy.send_operation(op)
+      assert {:error, %Req.TransportError{reason: :timeout}} =
+               Hippy.send_operation(op, req_options: [receive_timeout: 1])
     end
   end
 
@@ -281,23 +294,21 @@ defmodule Hippy.Integration.CupsTest do
     end
   end
 
-  defp with_req_options(options), do: Application.put_env(:hippy, :req_options, options)
-
   defp printer(base, queue), do: "#{base}/printers/#{queue}"
 
-  defp send!(op) do
-    {:ok, %Hippy.Response{} = res} = Hippy.send_operation(op)
+  defp send!(op, opts \\ []) do
+    {:ok, %Hippy.Response{} = res} = Hippy.send_operation(op, opts)
     res
   end
 
-  defp print!(op) do
-    res = send!(op)
+  defp print!(op, opts \\ []) do
+    res = send!(op, opts)
     assert res.status_code == :successful_ok
     AttributeGroup.to_map(res.job_attributes, 0)["job-id"]
   end
 
-  defp job_attributes!(uri, id) do
-    send!(GetJobAttributes.new(uri, id)).job_attributes |> AttributeGroup.to_map(0)
+  defp job_attributes!(uri, id, opts \\ []) do
+    send!(GetJobAttributes.new(uri, id), opts).job_attributes |> AttributeGroup.to_map(0)
   end
 
   defp job_ids(uri, which) do

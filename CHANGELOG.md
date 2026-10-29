@@ -12,6 +12,10 @@
 
 ### Added
 
+- `Hippy.send_operation/2` and `Hippy.Server.send_request/3` accept `req_options:` for one
+  request, merged over `config :hippy, req_options: [...]`, so printers with different
+  credentials or TLS settings can be used at the same time. `send_operation/2` also accepts
+  `endpoint:`. Passing the endpoint URL as the second argument still works.
 - All operations accept `operation_attributes:`, and Print-Job accepts `job_attributes:`, for
   sending any attribute. Each replaces an attribute of the same name that Hippy would otherwise
   send, so defaults such as `orientation-requested` can be overridden.
@@ -28,6 +32,7 @@
 
 ### Fixes
 
+- Setting `headers:` in `req_options` no longer drops the `application/ipp` content type.
 - `ipp://` URIs without a port now connect to IPP's default port 631 instead of port 80.
 - `Hippy.Encoder.encode/1` raises `ArgumentError` for an attribute it can't encode, instead of
   crashing with an unrelated error.
