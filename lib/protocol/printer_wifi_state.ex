@@ -3,6 +3,9 @@ defmodule Hippy.Protocol.PrinterWifiState do
   Not sure what these values represent yet! :)
   """
 
-  def decode(value), do: value
+  @behaviour Hippy.Protocol.Enum
+
+  @impl Hippy.Protocol.Enum
+  def decode(value), do: {:ok, value}
   def decode!(value), do: value
 end

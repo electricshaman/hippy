@@ -63,6 +63,8 @@ defmodule Hippy.Integration.CupsTest do
         assert map_size(attrs) > 50
         assert attrs["printer-state"] == state
         assert attrs["printer-is-accepting-jobs"] == accepting
+        assert attrs["printer-type"] |> List.wrap() |> Enum.all?(&is_binary/1)
+        assert :portrait in attrs["orientation-requested-supported"]
       end
     end
 
