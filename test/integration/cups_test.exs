@@ -114,6 +114,49 @@ defmodule Hippy.Integration.CupsTest do
       assert container_exec(ctx.container, ["head", "-c", "4", "/spool/filtered.ps"]) == "%!PS"
     end
 
+    test "document format and extra job attributes reach the filters", ctx do
+      uri = printer(ctx.http, "filtered")
+      a4 = %{"x-dimension" => {:integer, 21000}, "y-dimension" => {:integer, 29700}}
+
+      op =
+        PrintJob.new(uri, pdf(),
+          document_format: "application/pdf",
+          job_attributes: [
+            {:integer, "copies", 2},
+            {:keyword, "sides", "two-sided-long-edge"},
+            {:collection, "media-col", %{"media-size" => {:collection, a4}}},
+            {:enum, "orientation-requested", Orientation.landscape()}
+          ]
+        )
+
+      id = print!(op)
+      assert wait_for_state(uri, id) == :completed
+
+      attrs = job_attributes!(uri, id)
+      assert attrs["document-format"] == "application/pdf"
+      assert attrs["copies"] == 2
+      assert attrs["sides"] == "two-sided-long-edge"
+      assert attrs["orientation-requested"] == :landscape
+
+      # CUPS converts media-col to a media size for the filters.
+      log = container_exec(ctx.container, ["cat", "/var/log/cups/error_log"])
+      [options] = Regex.run(~r/\[Job #{id}\] argv\[5\]="([^"]*)"/, log, capture: :all_but_first)
+      assert options =~ "media=A4"
+      assert options =~ "sides=two-sided-long-edge"
+      assert options =~ "orientation-requested=4"
+    end
+
+    test "unsupported document format is reported", %{http: http} do
+      res =
+        send!(PrintJob.new(printer(http, "raw"), pdf(), document_format: "application/x-nope"))
+
+      assert res.status_code == :client_error_document_format_not_supported
+
+      assert res.unsupported_attributes == [
+               {:mime_media_type, "document-format", "application/x-nope"}
+             ]
+    end
+
     test "plain text is auto-typed and converted by CUPS", %{http: http} do
       uri = printer(http, "filtered")
       id = print!(PrintJob.new(uri, "Hello from Hippy\n", job_name: "Hippy text"))
@@ -195,6 +238,13 @@ defmodule Hippy.Integration.CupsTest do
       with_req_options(@tls ++ [auth: {:basic, @credentials}])
       assert send!(GetPrinterAttributes.new(uri)).status_code == :successful_ok
       assert is_integer(print!(PrintJob.new(uri, pdf())))
+    end
+
+    test "ipps:// printer URI", %{https: https} do
+      with_req_options(@tls ++ [auth: {:basic, @credentials}])
+      uri = String.replace(printer(https, "secure"), "https://", "ipps://")
+
+      assert send!(GetPrinterAttributes.new(uri)).status_code == :successful_ok
     end
 
     test "self-signed certificate is rejected when verification is on", %{https: https} do

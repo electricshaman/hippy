@@ -1,5 +1,5 @@
 defmodule Hippy.Server do
-  @supported_schemes ["ipp", "http", "https"]
+  @supported_schemes ["ipp", "ipps", "http", "https"]
 
   def send_operation(op) do
     if is_nil(op.printer_uri) do
@@ -52,9 +52,13 @@ defmodule Hippy.Server do
     end
   end
 
+  # ipp and ipps are sent over http and https, on IPP's default port 631 unless one is given.
   defp adjust_scheme(%URI{scheme: "ipp"} = uri) do
-    # Translate scheme back to http if we've found an ipp scheme in the URI.
-    %{uri | scheme: "http"}
+    %{uri | scheme: "http", port: uri.port || 631}
+  end
+
+  defp adjust_scheme(%URI{scheme: "ipps"} = uri) do
+    %{uri | scheme: "https", port: uri.port || 631}
   end
 
   defp adjust_scheme(%URI{scheme: scheme} = uri) when scheme in ["http", "https"] do

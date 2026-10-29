@@ -15,6 +15,14 @@ defmodule Hippy.ServerTest do
     {:error, :printer_uri_required} = Server.send_operation(op, nil)
   end
 
+  test "ipp and ipps URIs are sent over http and https, on port 631 by default" do
+    assert Server.format_endpoint("ipp://h/p") == {:ok, "http://h:631/p"}
+    assert Server.format_endpoint("ipps://h/p") == {:ok, "https://h:631/p"}
+    assert Server.format_endpoint("ipp://h:8631/p") == {:ok, "http://h:8631/p"}
+    assert Server.format_endpoint("http://h/p") == {:ok, "http://h/p"}
+    assert Server.format_endpoint("lpd://h/p") == {:error, {:unsupported_uri_scheme, "lpd"}}
+  end
+
   test "posts an IPP request and decodes the response" do
     response = File.read!("test/captures/ipp_get_jobs_res.bin")
 

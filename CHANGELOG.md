@@ -7,9 +7,19 @@
 - `Hippy.Operation.build_request/1` no longer sets `request_id`. `Hippy.Server` assigns one when
   sending, unless it's already set. `Hippy.Encoder.encode/1` raises `ArgumentError` for a
   request without one, so code that encodes requests directly needs to set it.
+- An `https://` printer URI is now sent as `ipps://` in the `printer-uri` attribute instead of
+  `ipp://`.
 
 ### Added
 
+- All operations accept `operation_attributes:`, and Print-Job accepts `job_attributes:`, for
+  sending any attribute. Each replaces an attribute of the same name that Hippy would otherwise
+  send, so defaults such as `orientation-requested` can be overridden.
+- Print-Job accepts `document_format:` (e.g. `"application/pdf"`).
+- The encoder supports every IPP value syntax: `boolean`, `mimeMediaType`, text and name with or
+  without language, `octetString`, `uriScheme`, `dateTime`, `rangeOfInteger`, `resolution` and
+  collections, as well as multi-valued attributes given as lists.
+- `ipps://` printer URIs are supported.
 - `Hippy.Request.new/4` builds a request with the common operation attributes
   (`attributes-charset`, `attributes-natural-language`, `printer-uri`), for implementing
   operations.
@@ -18,6 +28,9 @@
 
 ### Fixes
 
+- `ipp://` URIs without a port now connect to IPP's default port 631 instead of port 80.
+- `Hippy.Encoder.encode/1` raises `ArgumentError` for an attribute it can't encode, instead of
+  crashing with an unrelated error.
 - Multi-valued attributes (e.g. `job-state-reasons`, `job-sheets`) are now decoded as a list in
   every attribute group. Previously only printer attributes were, so `AttributeGroup.to_map/2`
   kept only the last value for job and operation attributes.

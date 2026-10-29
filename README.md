@@ -35,7 +35,11 @@ config :hippy, enums: %{
 doc = File.read!("tps_report.pdf") 
 printer_uri = "http://localhost:631/printers/HP_Color_LaserJet"
 
-Hippy.Operation.PrintJob.new(printer_uri, doc, job_name: "TPS Report", orientation: Hippy.Protocol.Orientation.portrait())
+Hippy.Operation.PrintJob.new(printer_uri, doc,
+  job_name: "TPS Report",
+  document_format: "application/pdf",
+  orientation: Hippy.Protocol.Orientation.portrait()
+)
 |> Hippy.send_operation()
 
 {:ok,
@@ -60,6 +64,24 @@ Hippy.Operation.PrintJob.new(printer_uri, doc, job_name: "TPS Report", orientati
    version: %Hippy.IPPVersion{major: 1, minor: 1}
  }}
 ```
+### Send other attributes
+
+Every operation accepts `operation_attributes:`, and Print-Job also accepts `job_attributes:`, for attributes Hippy doesn't have an option for. They're `{syntax, name, value}` tuples, in the same form responses are decoded to, and replace an attribute of the same name that Hippy would otherwise send. See `Hippy.Encoder.encode/1` for the supported syntaxes.
+
+```elixir
+a4 = %{"x-dimension" => {:integer, 21000}, "y-dimension" => {:integer, 29700}}
+
+Hippy.Operation.PrintJob.new(printer_uri, doc,
+  document_format: "application/pdf",
+  job_attributes: [
+    {:integer, "copies", 2},
+    {:keyword, "sides", "two-sided-long-edge"},
+    {:collection, "media-col", %{"media-size" => {:collection, a4}}}
+  ]
+)
+|> Hippy.send_operation()
+```
+
 ### Get recently completed jobs
 ```elixir
 Hippy.Operation.GetJobs.new("http://localhost:631/printers/HP_Color_LaserJet")
