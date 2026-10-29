@@ -48,6 +48,11 @@ defmodule Hippy.EnumTest do
            ]
   end
 
+  test "job-state values outside RFC 8011 are left as integers" do
+    assert decode_printer_attributes([{"job-state", 0}])["job-state"] == 0
+    assert decode_printer_attributes([{"job-state", 9}])["job-state"] == :completed
+  end
+
   test "printer-wifi-state is left as an integer" do
     assert decode_printer_attributes([{"printer-wifi-state", 3}])["printer-wifi-state"] == 3
   end
