@@ -29,20 +29,9 @@ end
 
 defimpl Hippy.Operation, for: Hippy.Operation.GetJobs do
   def build_request(op) do
-    target = String.replace(op.printer_uri, ~r/^http(s)?/, "ipp")
-
-    %Hippy.Request{
-      # Should request_id be a parameter to build_request?
-      request_id: System.unique_integer([:positive, :monotonic]),
-      operation_id: Hippy.Protocol.Operation.get_jobs(),
-      operation_attributes: [
-        {:charset, "attributes-charset", op.charset},
-        {:natural_language, "attributes-natural-language", op.language},
-        {:uri, "printer-uri", target},
-        {:keyword, "which-jobs", op.which_jobs |> to_string() |> String.replace("_", "-")},
-        {{:set1, :keyword}, "requested-attributes", op.requested_attributes}
-      ],
-      data: <<>>
-    }
+    Hippy.Request.new(Hippy.Protocol.Operation.get_jobs(), op, [
+      {:keyword, "which-jobs", op.which_jobs |> to_string() |> String.replace("_", "-")},
+      {{:set1, :keyword}, "requested-attributes", op.requested_attributes}
+    ])
   end
 end

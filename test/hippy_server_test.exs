@@ -31,6 +31,31 @@ defmodule Hippy.ServerTest do
              Server.send_operation(GetJobs.new(@endpoint))
   end
 
+  test "assigns a request id unless one is set" do
+    response = File.read!("test/captures/ipp_get_jobs_res.bin")
+    test = self()
+
+    Req.Test.stub(Server, fn conn ->
+      {:ok, <<_version::16, _operation::16, request_id::32, _::binary>>, conn} =
+        Plug.Conn.read_body(conn)
+
+      send(test, {:request_id, request_id})
+      Plug.Conn.send_resp(conn, 200, response)
+    end)
+
+    req = Hippy.Operation.build_request(GetJobs.new(@endpoint))
+    assert req.request_id == nil
+
+    {:ok, _} = Server.send_request(req, @endpoint)
+    {:ok, _} = Server.send_request(req, @endpoint)
+    assert_received {:request_id, first}
+    assert_received {:request_id, second}
+    assert first > 0 and second > first
+
+    {:ok, _} = Server.send_request(%{req | request_id: 1234}, @endpoint)
+    assert_received {:request_id, 1234}
+  end
+
   test "non-200 HTTP responses return an error" do
     Req.Test.stub(Server, &Plug.Conn.send_resp(&1, 401, "Unauthorized"))
 

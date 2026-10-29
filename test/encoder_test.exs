@@ -7,6 +7,7 @@ defmodule Hippy.EncoderTest do
     bin =
       Operation.PrintJob.new("http://localhost:631/printers/p", "DOC")
       |> Operation.build_request()
+      |> Map.put(:request_id, 1)
       |> Encoder.encode()
 
     orientation = Hippy.Protocol.Orientation.portrait()
@@ -21,9 +22,37 @@ defmodule Hippy.EncoderTest do
     bin =
       Operation.GetPrinterAttributes.new("http://localhost:631/printers/p")
       |> Operation.build_request()
+      |> Map.put(:request_id, 1)
       |> Encoder.encode()
 
     assert String.ends_with?(bin, <<"ipp://localhost:631/printers/p", 0x03>>)
+  end
+
+  test "requests start with the common operation attributes" do
+    req =
+      Operation.CancelJob.new("https://localhost/printers/p", 7,
+        charset: "us-ascii",
+        language: "fr"
+      )
+      |> Operation.build_request()
+
+    assert req.operation_attributes == [
+             {:charset, "attributes-charset", "us-ascii"},
+             {:natural_language, "attributes-natural-language", "fr"},
+             {:uri, "printer-uri", "ipp://localhost/printers/p"},
+             {:integer, "job-id", 7}
+           ]
+  end
+
+  test "requests without a request id are rejected" do
+    assert_raise ArgumentError, ~r/request_id is required/, fn ->
+      Encoder.encode(%Hippy.Request{operation_id: 0x0B})
+    end
+  end
+
+  test "requests built by hand default to no document" do
+    bin = Encoder.encode(%Hippy.Request{operation_id: 0x0B, request_id: 1})
+    assert bin == <<1, 1, 0x0B::16, 1::32, 0x01, 0x03>>
   end
 
   test "which-jobs atoms are encoded as hyphenated keywords" do
