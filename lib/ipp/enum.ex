@@ -1,11 +1,11 @@
-defmodule Hippy.Protocol.Enum do
+defmodule Hippy.IPP.Enum do
   @moduledoc """
   Defines enums for IPP values, and decodes enum attributes in responses.
 
   Define an enum from a map of names to values:
 
       defmodule MyApp.VendorState do
-        use Hippy.Protocol.Enum, %{
+        use Hippy.IPP.Enum, %{
           idle: 0x01,
           busy: 0x02
         }
@@ -22,14 +22,14 @@ defmodule Hippy.Protocol.Enum do
 
       config :hippy, enums: %{
         "x-vendor-state" => MyApp.VendorState,
-        "input-orientation-requested" => Hippy.Protocol.Orientation
+        "input-orientation-requested" => Hippy.IPP.Orientation
       }
 
   When `xxx-default` or `xxx-supported` has no module registered, the module for `xxx` is
   used. Values without a registered module, or not found in the enum, are left as integers.
 
   A registered module doesn't have to use this macro, as long as it implements this
-  behaviour (see `Hippy.Protocol.PrinterType` for an example).
+  behaviour (see `Hippy.IPP.PrinterType` for an example).
   """
 
   @doc "Decodes an enum value received from a printer."
@@ -41,7 +41,7 @@ defmodule Hippy.Protocol.Enum do
 
   def generate(map) do
     quote bind_quoted: [map: map] do
-      @behaviour Hippy.Protocol.Enum
+      @behaviour Hippy.IPP.Enum
 
       @left map
       @right map |> Enum.map(fn {k, v} -> {v, k} end) |> Map.new()
@@ -80,7 +80,7 @@ defmodule Hippy.Protocol.Enum do
         end
       end
 
-      @impl Hippy.Protocol.Enum
+      @impl Hippy.IPP.Enum
       def decode(value) do
         case Map.fetch(@right, value) do
           {:ok, _key} = ok -> ok
@@ -111,17 +111,17 @@ defmodule Hippy.Protocol.Enum do
   end
 
   @builtin_enums %{
-    "job-state" => Hippy.Protocol.JobState,
-    "status-code" => Hippy.Protocol.StatusCode,
-    "printer-state" => Hippy.Protocol.PrinterState,
-    "printer-type" => Hippy.Protocol.PrinterType,
-    "operations-supported" => Hippy.Protocol.Operation,
-    "print-quality" => Hippy.Protocol.PrintQuality,
-    "finishings" => Hippy.Protocol.Finishing,
-    "finishings-ready" => Hippy.Protocol.Finishing,
-    "orientation-requested" => Hippy.Protocol.Orientation,
-    "landscape-orientation-requested-preferred" => Hippy.Protocol.Orientation,
-    "printer-wifi-state" => Hippy.Protocol.PrinterWifiState
+    "job-state" => Hippy.IPP.JobState,
+    "status-code" => Hippy.IPP.StatusCode,
+    "printer-state" => Hippy.IPP.PrinterState,
+    "printer-type" => Hippy.IPP.PrinterType,
+    "operations-supported" => Hippy.IPP.Operation,
+    "print-quality" => Hippy.IPP.PrintQuality,
+    "finishings" => Hippy.IPP.Finishing,
+    "finishings-ready" => Hippy.IPP.Finishing,
+    "orientation-requested" => Hippy.IPP.Orientation,
+    "landscape-orientation-requested-preferred" => Hippy.IPP.Orientation,
+    "printer-wifi-state" => Hippy.IPP.PrinterWifiState
   }
 
   defp get_enum_module(attribute) do

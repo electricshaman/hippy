@@ -10,7 +10,7 @@ defmodule Hippy.EncoderTest do
       |> Map.put(:request_id, 1)
       |> Encoder.encode()
 
-    orientation = Hippy.Protocol.Orientation.portrait()
+    orientation = Hippy.IPP.Orientation.portrait()
 
     assert String.ends_with?(
              bin,

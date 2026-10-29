@@ -23,12 +23,12 @@ Enum attributes are decoded to atoms for common attributes such as `job-state` a
 
 ```elixir
 defmodule MyApp.VendorState do
-  use Hippy.Protocol.Enum, %{idle: 0x01, busy: 0x02}
+  use Hippy.IPP.Enum, %{idle: 0x01, busy: 0x02}
 end
 
 config :hippy, enums: %{
   "x-vendor-state" => MyApp.VendorState,
-  "input-orientation-requested" => Hippy.Protocol.Orientation
+  "input-orientation-requested" => Hippy.IPP.Orientation
 }
 ```
 
@@ -91,7 +91,7 @@ printer_uri = "http://localhost:631/printers/HP_Color_LaserJet"
 Hippy.Operation.PrintJob.new(printer_uri, doc,
   job_name: "TPS Report",
   document_format: "application/pdf",
-  orientation: Hippy.Protocol.Orientation.portrait()
+  orientation: Hippy.IPP.Orientation.portrait()
 )
 |> Hippy.send_operation()
 

@@ -1,9 +1,9 @@
-defmodule Hippy.Protocol.PrinterType do
+defmodule Hippy.IPP.PrinterType do
   @moduledoc """
   Decodes the CUPS `printer-type` bit field into a list of capability descriptions.
   """
 
-  @behaviour Hippy.Protocol.Enum
+  @behaviour Hippy.IPP.Enum
 
   @masks %{
     0x00000001 => "Is a printer class.",
@@ -38,7 +38,7 @@ defmodule Hippy.Protocol.PrinterType do
 
   import Bitwise
 
-  @impl Hippy.Protocol.Enum
+  @impl Hippy.IPP.Enum
   def decode(value) do
     {:ok, decode!(value)}
   end

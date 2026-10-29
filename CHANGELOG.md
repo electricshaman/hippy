@@ -9,6 +9,15 @@
   request without one, so code that encodes requests directly needs to set it.
 - An `https://` printer URI is now sent as `ipps://` in the `printer-uri` attribute instead of
   `ipp://`.
+- `Hippy.IPP.JobState` no longer has a `nil` state for the value 0, which isn't a job state in
+  RFC 8011. A `job-state` of 0 is now left as the integer 0, like other unknown enum values.
+
+### Deprecated
+
+- The `Hippy.Protocol.*` modules are renamed to `Hippy.IPP.*` (e.g. `Hippy.IPP.Orientation`,
+  `use Hippy.IPP.Enum`), so they aren't confused with Elixir protocols. The old names still work
+  but warn at compile time with the new name, and will be removed in a later release.
+  `Hippy.Protocol.Binary` was unused and is deprecated with no replacement.
 
 ### Added
 

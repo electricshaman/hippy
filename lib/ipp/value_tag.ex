@@ -1,5 +1,5 @@
-defmodule Hippy.Protocol.ValueTag do
-  use Hippy.Protocol.Enum, %{
+defmodule Hippy.IPP.ValueTag do
+  use Hippy.IPP.Enum, %{
     integer: 0x21,
     boolean: 0x22,
     enum: 0x23,

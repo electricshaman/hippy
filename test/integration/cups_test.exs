@@ -12,7 +12,7 @@ defmodule Hippy.Integration.CupsTest do
 
   alias Hippy.Response
   alias Hippy.Operation.{CancelJob, GetJobAttributes, GetJobs, GetPrinterAttributes, PrintJob}
-  alias Hippy.Protocol.Orientation
+  alias Hippy.IPP.Orientation
 
   @moduletag :cups
   @moduletag timeout: 120_000
