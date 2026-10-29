@@ -1,5 +1,7 @@
 # Changelog
 
+## Unreleased
+
 ## 0.5.0 (2026-10-29)
 
 ### Breaking changes
