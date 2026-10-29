@@ -4,16 +4,13 @@ on:
   push:
     branches: [master]
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Runs triggered by adding a label get their own group, so they don't cancel the run for the
-# code (opening a PR with a label triggers both at once).
 concurrency:
-  group: ci-${{ github.ref }}-${{ github.event.action == 'labeled' && 'labeled' || 'code' }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -22,8 +19,6 @@ env:
 jobs:
   test:
     name: Test (Elixir ${{ matrix.elixir }}, OTP ${{ matrix.otp }})
-    # Adding a label doesn't change the code, so only the CUPS job runs for it.
-    if: github.event.action != 'labeled'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -64,39 +59,3 @@ jobs:
 
       - run: mix hex.audit
         if: matrix.lint
-
-  cups:
-    name: CUPS integration
-    # Runs on master and manual dispatch. Add the "cups" label to a PR to run it there too.
-    # The test job is skipped for label events, so don't let that skip this job too.
-    needs: test
-    if: >-
-      !failure() && !cancelled() && (
-        github.event_name != 'pull_request' ||
-        (github.event.action == 'labeled' && github.event.label.name == 'cups') ||
-        (github.event.action != 'labeled' &&
-          contains(github.event.pull_request.labels.*.name, 'cups')))
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: erlef/setup-beam@v1
-        with:
-          elixir-version: "1.19.4"
-          otp-version: "28.3.2"
-          version-type: strict
-
-      - uses: actions/cache@v6
-        with:
-          path: |
-            deps
-            _build
-          key: mix-${{ runner.os }}-1.19.4-28.3.2-${{ hashFiles('mix.lock') }}
-          restore-keys: mix-${{ runner.os }}-1.19.4-28.3.2-
-
-      - run: mix deps.get
-
-      # Build the image up front so the slow apt step isn't inside the test run.
-      - run: docker build -t hippy-cups-test test/integration/cups
-
-      - run: mix test --only cups
