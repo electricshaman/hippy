@@ -1,9 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 (2026-10-29)
 
 ### Breaking changes
 
+- Multi-valued attributes are now lists in every attribute group. Previously only printer
+  attributes were, and job and operation attributes such as `job-state-reasons` kept only their
+  last value, so code expecting a single value there may now get a list.
 - `Hippy.Operation.build_request/1` no longer sets `request_id`. `Hippy.Server` assigns one when
   sending, unless it's already set. `Hippy.Encoder.encode/1` raises `ArgumentError` for a
   request without one, so code that encodes requests directly needs to set it.
@@ -28,6 +31,21 @@
 
 ### Added
 
+- All operations accept `operation_attributes:`, and Print-Job accepts `job_attributes:`, for
+  sending any attribute. Each replaces an attribute of the same name that Hippy would otherwise
+  send, so defaults such as `orientation-requested` can be overridden.
+- Print-Job accepts `document_format:` (e.g. `"application/pdf"`).
+- The encoder supports every IPP value syntax: `boolean`, `mimeMediaType`, text and name with or
+  without language, `octetString`, `uriScheme`, `dateTime`, `rangeOfInteger`, `resolution`,
+  collections and out-of-band values (e.g. `{:delete_attribute, "job-hold-until", nil}`), as
+  well as multi-valued attributes given as lists.
+- `Hippy.send_operation/2` and `Hippy.Server.send_request/3` accept `req_options:` for one
+  request, merged over `config :hippy, req_options: [...]`, so printers with different
+  credentials or TLS settings can be used at the same time. `send_operation/2` also accepts
+  `endpoint:`. Passing the endpoint URL as the second argument still works.
+- `Hippy.Response.job/1`, `jobs/1`, `printer/1`, `operation/1` and `unsupported/1` return
+  attributes as maps, e.g. `Hippy.Response.job(res)["job-id"]`.
+- `ipps://` printer URIs are supported.
 - Enum modules for `document-state`, `system-state`, `resource-state`, `power-state`,
   `client-type` and `transmission-status`, and decoding of the attributes the registry defines
   in terms of other enums: `input-orientation-requested`, `image-orientation`,
@@ -38,21 +56,6 @@
 - `Hippy.Response` has `subscription_attributes`, `event_notification_attributes`,
   `resource_attributes`, `document_attributes` and `system_attributes` fields, and
   `unknown_attributes` now holds attributes from group tags IANA hasn't assigned.
-- The encoder supports out-of-band values, e.g. `{:delete_attribute, "job-hold-until", nil}`.
-- `Hippy.Response.job/1`, `jobs/1`, `printer/1`, `operation/1` and `unsupported/1` return
-  attributes as maps, e.g. `Hippy.Response.job(res)["job-id"]`.
-- `Hippy.send_operation/2` and `Hippy.Server.send_request/3` accept `req_options:` for one
-  request, merged over `config :hippy, req_options: [...]`, so printers with different
-  credentials or TLS settings can be used at the same time. `send_operation/2` also accepts
-  `endpoint:`. Passing the endpoint URL as the second argument still works.
-- All operations accept `operation_attributes:`, and Print-Job accepts `job_attributes:`, for
-  sending any attribute. Each replaces an attribute of the same name that Hippy would otherwise
-  send, so defaults such as `orientation-requested` can be overridden.
-- Print-Job accepts `document_format:` (e.g. `"application/pdf"`).
-- The encoder supports every IPP value syntax: `boolean`, `mimeMediaType`, text and name with or
-  without language, `octetString`, `uriScheme`, `dateTime`, `rangeOfInteger`, `resolution` and
-  collections, as well as multi-valued attributes given as lists.
-- `ipps://` printer URIs are supported.
 - `Hippy.Request.new/4` builds a request with the common operation attributes
   (`attributes-charset`, `attributes-natural-language`, `printer-uri`), for implementing
   operations.
@@ -64,17 +67,23 @@
 - Responses with subscription, event notification, resource, document or system attribute
   groups, with `not-settable`, `delete-attribute` or `admin-define` values, or with value tags
   reserved for future use no longer crash the decoder.
-- Setting `headers:` in `req_options` no longer drops the `application/ipp` content type.
 - `ipp://` URIs without a port now connect to IPP's default port 631 instead of port 80.
+- Setting `headers:` in `req_options` no longer drops the `application/ipp` content type.
 - `Hippy.Encoder.encode/1` raises `ArgumentError` for an attribute it can't encode, instead of
   crashing with an unrelated error.
-- Multi-valued attributes (e.g. `job-state-reasons`, `job-sheets`) are now decoded as a list in
-  every attribute group. Previously only printer attributes were, so `AttributeGroup.to_map/2`
-  kept only the last value for job and operation attributes.
 - Values of a multi-valued attribute with different syntaxes (e.g. `keyword` and `name`) are kept
   together in one attribute instead of being split by syntax.
 - Attributes repeated by name within a group (which some printers send) are merged in every group,
   dropping duplicate values.
+
+### Other
+
+- The README documents authentication, self-signed certificates (including pinning a
+  certificate, since Erlang won't trust a self-signed one through `cacertfile`) and timeouts.
+- CI runs the tests on the oldest and newest supported Elixir/OTP versions, and the CUPS
+  integration tests on master and on PRs labelled `cups`.
+- The enum values are checked against a copy of the IANA IPP registry, refreshed with
+  `mix run scripts/update_ipp_registry.exs`.
 
 ## 0.4.1 (2026-10-29)
 
