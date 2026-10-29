@@ -9,10 +9,14 @@ This is currently very alpha-stage software and will be evolving quickly.  Pleas
 
 ## Configuration
 
-Hippy uses [Req](https://hex.pm/packages/req) for HTTP and requires Elixir 1.15 or later. Extra Req options (timeouts, TLS settings, etc.) can be passed through application config:
+Hippy uses [Req](https://hex.pm/packages/req) for HTTP and requires Elixir 1.15 or later. Extra Req options (authentication, TLS settings, timeouts, etc.) can be passed per request, or for every request through application config. Options given per request are merged over the configured ones:
 
 ```elixir
 config :hippy, req_options: [receive_timeout: 30_000]
+```
+
+```elixir
+Hippy.send_operation(op, req_options: [auth: {:basic, "user:pass"}])
 ```
 
 Enum attributes are decoded to atoms for common attributes such as `job-state` and `orientation-requested`, and left as integers otherwise. To decode other enum attributes (e.g. vendor extensions), define an enum and register it by attribute name. Registered enums take precedence over the built-in ones, and `xxx-default` and `xxx-supported` use the enum registered for `xxx`:
