@@ -2,6 +2,10 @@ defmodule Hippy.Operation.CancelJob do
   @moduledoc """
   Represents a request to cancel a print job from the time it's created up to the time
   it's completed, canceled, or aborted.
+
+  Extra attributes can be sent with the `:operation_attributes` option, as `{syntax, name, value}`
+  tuples (see `Hippy.Encoder.encode/1`). Each replaces an attribute of the same name that Hippy
+  would otherwise send.
   """
 
   @def_charset "utf-8"
@@ -12,14 +16,16 @@ defmodule Hippy.Operation.CancelJob do
   defstruct printer_uri: nil,
             job_id: nil,
             charset: @def_charset,
-            language: @def_lang
+            language: @def_lang,
+            operation_attributes: []
 
   def new(printer_uri, job_id, opts \\ []) do
     %__MODULE__{
       printer_uri: printer_uri,
       job_id: job_id,
       charset: Keyword.get(opts, :charset, @def_charset),
-      language: Keyword.get(opts, :language, @def_lang)
+      language: Keyword.get(opts, :language, @def_lang),
+      operation_attributes: Keyword.get(opts, :operation_attributes, [])
     }
   end
 end

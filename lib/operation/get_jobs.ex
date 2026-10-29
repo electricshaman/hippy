@@ -1,6 +1,10 @@
 defmodule Hippy.Operation.GetJobs do
   @moduledoc """
   Represents a request to get print jobs for a printer on the IPP server.
+
+  Extra attributes can be sent with the `:operation_attributes` option, as `{syntax, name, value}`
+  tuples (see `Hippy.Encoder.encode/1`). Each replaces an attribute of the same name that Hippy
+  would otherwise send.
   """
 
   @def_charset "utf-8"
@@ -13,6 +17,7 @@ defmodule Hippy.Operation.GetJobs do
   defstruct printer_uri: nil,
             charset: @def_charset,
             language: @def_lang,
+            operation_attributes: [],
             which_jobs: @def_jobs,
             requested_attributes: @def_atts
 
@@ -21,6 +26,7 @@ defmodule Hippy.Operation.GetJobs do
       printer_uri: printer_uri,
       charset: Keyword.get(opts, :charset, @def_charset),
       language: Keyword.get(opts, :language, @def_lang),
+      operation_attributes: Keyword.get(opts, :operation_attributes, []),
       which_jobs: Keyword.get(opts, :which_jobs, @def_jobs),
       requested_attributes: Keyword.get(opts, :requested_attributes, @def_atts)
     }

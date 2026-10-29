@@ -19,19 +19,45 @@ defmodule Hippy.Request do
   `attributes-natural-language` and `printer-uri`) from the operation's `charset`, `language`
   and `printer_uri` fields, followed by `attributes`. Other request fields, such as
   `job_attributes` and `data`, can be given in `fields`.
+
+  Attributes in the operation's `operation_attributes` and `job_attributes` fields, if it has
+  them, are added to the matching group. Each replaces an attribute of the same name, so callers
+  can override the defaults.
   """
   def new(operation_id, op, attributes \\ [], fields \\ []) do
-    target = String.replace(op.printer_uri, ~r/^http(s)?/, "ipp")
+    # http and https map to the ipp and ipps schemes in the printer-uri attribute.
+    target = String.replace(op.printer_uri, ~r/^http/, "ipp")
 
-    operation_attributes = [
-      {:charset, "attributes-charset", op.charset},
-      {:natural_language, "attributes-natural-language", op.language},
-      {:uri, "printer-uri", target} | attributes
-    ]
+    operation_attributes =
+      [
+        {:charset, "attributes-charset", op.charset},
+        {:natural_language, "attributes-natural-language", op.language},
+        {:uri, "printer-uri", target} | attributes
+      ]
+      |> merge(Map.get(op, :operation_attributes, []))
+
+    job_attributes =
+      fields
+      |> Keyword.get(:job_attributes, [])
+      |> merge(Map.get(op, :job_attributes, []))
 
     struct!(
-      %__MODULE__{operation_id: operation_id, operation_attributes: operation_attributes},
-      fields
+      %__MODULE__{
+        operation_id: operation_id,
+        operation_attributes: operation_attributes,
+        job_attributes: job_attributes
+      },
+      Keyword.delete(fields, :job_attributes)
     )
+  end
+
+  defp merge(attributes, overrides) do
+    Enum.reduce(overrides, attributes, fn {_syntax, name, _value} = override, acc ->
+      if List.keymember?(acc, name, 1) do
+        List.keyreplace(acc, name, 1, override)
+      else
+        acc ++ [override]
+      end
+    end)
   end
 end
