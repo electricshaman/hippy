@@ -21,6 +21,8 @@ defmodule Hippy.Server do
   end
 
   def send_request(%Hippy.Request{} = req, endpoint) do
+    req = %{req | request_id: req.request_id || System.unique_integer([:positive, :monotonic])}
+
     case post(endpoint, Hippy.Encoder.encode(req)) do
       {:ok, %Req.Response{status: 200, body: body}} ->
         {:ok, Hippy.Decoder.decode(body)}

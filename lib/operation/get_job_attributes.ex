@@ -28,20 +28,9 @@ end
 
 defimpl Hippy.Operation, for: Hippy.Operation.GetJobAttributes do
   def build_request(op) do
-    target = String.replace(op.printer_uri, ~r/^http(s)?/, "ipp")
-
-    %Hippy.Request{
-      # Should request_id be a parameter to build_request?
-      request_id: System.unique_integer([:positive, :monotonic]),
-      operation_id: Hippy.Protocol.Operation.get_job_attributes(),
-      operation_attributes: [
-        {:charset, "attributes-charset", op.charset},
-        {:natural_language, "attributes-natural-language", op.language},
-        {:uri, "printer-uri", target},
-        {:integer, "job-id", op.job_id},
-        {{:set1, :keyword}, "requested-attributes", op.requested_attributes}
-      ],
-      data: <<>>
-    }
+    Hippy.Request.new(Hippy.Protocol.Operation.get_job_attributes(), op, [
+      {:integer, "job-id", op.job_id},
+      {{:set1, :keyword}, "requested-attributes", op.requested_attributes}
+    ])
   end
 end

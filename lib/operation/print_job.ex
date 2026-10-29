@@ -31,22 +31,12 @@ end
 
 defimpl Hippy.Operation, for: Hippy.Operation.PrintJob do
   def build_request(op) do
-    target = String.replace(op.printer_uri, ~r/^http(s)?/, "ipp")
-
-    %Hippy.Request{
-      # Should request_id be a parameter to build_request?
-      request_id: System.unique_integer([:positive, :monotonic]),
-      operation_id: Hippy.Protocol.Operation.print_job(),
-      operation_attributes: [
-        {:charset, "attributes-charset", op.charset},
-        {:natural_language, "attributes-natural-language", op.language},
-        {:uri, "printer-uri", target},
-        {:name_without_language, "job-name", op.job_name}
-      ],
-      job_attributes: [
-        {:enum, "orientation-requested", op.orientation}
-      ],
+    Hippy.Request.new(
+      Hippy.Protocol.Operation.print_job(),
+      op,
+      [{:name_without_language, "job-name", op.job_name}],
+      job_attributes: [{:enum, "orientation-requested", op.orientation}],
       data: op.document
-    }
+    )
   end
 end

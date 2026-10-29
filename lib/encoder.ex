@@ -72,6 +72,10 @@ defmodule Hippy.Encoder do
     {:error, {:invalid_tag, tag, name, value}}
   end
 
+  defp request_header(%Request{request_id: nil}) do
+    raise ArgumentError, "request_id is required (Hippy.Server assigns one when sending)"
+  end
+
   defp request_header(req) do
     <<req.version.major::8-signed, req.version.minor::8-signed, req.operation_id::16-signed,
       req.request_id::32-signed, DelimiterTag.operation_attributes()::8-signed>>

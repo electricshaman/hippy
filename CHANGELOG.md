@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- `Hippy.Operation.build_request/1` no longer sets `request_id`. `Hippy.Server` assigns one when
+  sending, unless it's already set. `Hippy.Encoder.encode/1` raises `ArgumentError` for a
+  request without one, so code that encodes requests directly needs to set it.
+
+### Added
+
+- `Hippy.Request.new/4` builds a request with the common operation attributes
+  (`attributes-charset`, `attributes-natural-language`, `printer-uri`), for implementing
+  operations.
+- `Hippy.Request` now defaults `data` to an empty binary, so requests built by hand without a
+  document can be encoded.
+
 ### Fixes
 
 - Multi-valued attributes (e.g. `job-state-reasons`, `job-sheets`) are now decoded as a list in
