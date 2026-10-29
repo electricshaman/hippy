@@ -10,7 +10,7 @@ defmodule Hippy.Integration.CupsTest do
 
   import ExUnit.CaptureLog
 
-  alias Hippy.AttributeGroup
+  alias Hippy.Response
   alias Hippy.Operation.{CancelJob, GetJobAttributes, GetJobs, GetPrinterAttributes, PrintJob}
   alias Hippy.Protocol.Orientation
 
@@ -59,7 +59,7 @@ defmodule Hippy.Integration.CupsTest do
             {"rejecting", :idle, false}
           ] do
         res = send!(GetPrinterAttributes.new(printer(http, queue)))
-        attrs = AttributeGroup.to_map(res.printer_attributes)
+        attrs = Response.printer(res)
 
         assert res.status_code == :successful_ok
         assert map_size(attrs) > 50
@@ -154,9 +154,7 @@ defmodule Hippy.Integration.CupsTest do
 
       assert res.status_code == :client_error_document_format_not_supported
 
-      assert res.unsupported_attributes == [
-               {:mime_media_type, "document-format", "application/x-nope"}
-             ]
+      assert Response.unsupported(res) == %{"document-format" => "application/x-nope"}
     end
 
     test "plain text is auto-typed and converted by CUPS", %{http: http} do
@@ -304,16 +302,17 @@ defmodule Hippy.Integration.CupsTest do
   defp print!(op, opts \\ []) do
     res = send!(op, opts)
     assert res.status_code == :successful_ok
-    AttributeGroup.to_map(res.job_attributes, 0)["job-id"]
+    Response.job(res)["job-id"]
   end
 
   defp job_attributes!(uri, id, opts \\ []) do
-    send!(GetJobAttributes.new(uri, id), opts).job_attributes |> AttributeGroup.to_map(0)
+    Response.job(send!(GetJobAttributes.new(uri, id), opts))
   end
 
   defp job_ids(uri, which) do
-    send!(GetJobs.new(uri, which_jobs: which)).job_attributes
-    |> Enum.map(&AttributeGroup.to_map(&1)["job-id"])
+    send!(GetJobs.new(uri, which_jobs: which))
+    |> Response.jobs()
+    |> Enum.map(& &1["job-id"])
     |> Enum.sort()
   end
 
