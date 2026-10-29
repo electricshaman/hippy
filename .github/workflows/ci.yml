@@ -10,8 +10,10 @@ on:
 permissions:
   contents: read
 
+# Runs triggered by adding a label get their own group, so they don't cancel the run for the
+# code (opening a PR with a label triggers both at once).
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ github.event.action == 'labeled' && 'labeled' || 'code' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -20,6 +22,8 @@ env:
 jobs:
   test:
     name: Test (Elixir ${{ matrix.elixir }}, OTP ${{ matrix.otp }})
+    # Adding a label doesn't change the code, so only the CUPS job runs for it.
+    if: github.event.action != 'labeled'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -64,10 +68,14 @@ jobs:
   cups:
     name: CUPS integration
     # Runs on master and manual dispatch. Add the "cups" label to a PR to run it there too.
-    if: >-
-      github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'cups')
+    # The test job is skipped for label events, so don't let that skip this job too.
     needs: test
+    if: >-
+      !failure() && !cancelled() && (
+        github.event_name != 'pull_request' ||
+        (github.event.action == 'labeled' && github.event.label.name == 'cups') ||
+        (github.event.action != 'labeled' &&
+          contains(github.event.pull_request.labels.*.name, 'cups')))
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
