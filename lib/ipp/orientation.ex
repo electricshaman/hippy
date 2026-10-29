@@ -1,5 +1,5 @@
-defmodule Hippy.Protocol.Orientation do
-  use Hippy.Protocol.Enum, %{
+defmodule Hippy.IPP.Orientation do
+  use Hippy.IPP.Enum, %{
     portrait: 0x03,
     landscape: 0x04,
     reverse_landscape: 0x05,

@@ -35,7 +35,7 @@ end
 
 defimpl Hippy.Operation, for: Hippy.Operation.GetJobs do
   def build_request(op) do
-    Hippy.Request.new(Hippy.Protocol.Operation.get_jobs(), op, [
+    Hippy.Request.new(Hippy.IPP.Operation.get_jobs(), op, [
       {:keyword, "which-jobs", op.which_jobs |> to_string() |> String.replace("_", "-")},
       {{:set1, :keyword}, "requested-attributes", op.requested_attributes}
     ])

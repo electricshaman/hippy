@@ -6,7 +6,7 @@ defmodule Hippy.AttributeTransform do
   def handle_attribute({:enum, name, value}) do
     # Leave the raw integer in place for enums or values we don't know about
     # (e.g. vendor extensions) rather than failing the whole response.
-    case Hippy.Protocol.Enum.decode(name, value) do
+    case Hippy.IPP.Enum.decode(name, value) do
       {:ok, decoded} -> {:enum, name, decoded}
       {:error, _} -> {:enum, name, value}
     end
@@ -21,7 +21,7 @@ defmodule Hippy.AttributeTransform do
   end
 
   def handle_attribute({:resolution, name, {xf, f, u}}) do
-    unit = Hippy.Protocol.ResolutionUnit.decode!(u)
+    unit = Hippy.IPP.ResolutionUnit.decode!(u)
     {:resolution, name, Hippy.PrintResolution.new(xf, f, unit)}
   end
 

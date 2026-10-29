@@ -10,6 +10,13 @@
 - An `https://` printer URI is now sent as `ipps://` in the `printer-uri` attribute instead of
   `ipp://`.
 
+### Deprecated
+
+- The `Hippy.Protocol.*` modules are renamed to `Hippy.IPP.*` (e.g. `Hippy.IPP.Orientation`,
+  `use Hippy.IPP.Enum`), so they aren't confused with Elixir protocols. The old names still work
+  but warn at compile time with the new name, and will be removed in a later release.
+  `Hippy.Protocol.Binary` was unused and is deprecated with no replacement.
+
 ### Added
 
 - `Hippy.Response.job/1`, `jobs/1`, `printer/1`, `operation/1` and `unsupported/1` return

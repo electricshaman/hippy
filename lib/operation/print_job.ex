@@ -7,7 +7,7 @@ defmodule Hippy.Operation.PrintJob do
     * `:job_name` - defaults to `"Untitled Job"`.
     * `:document_format` - the MIME media type of the document, e.g. `"application/pdf"`. When
       not given, the printer decides (CUPS detects the type automatically).
-    * `:orientation` - an `Hippy.Protocol.Orientation` value, defaults to portrait.
+    * `:orientation` - an `Hippy.IPP.Orientation` value, defaults to portrait.
     * `:charset` and `:language` - default to `"utf-8"` and `"en"`.
     * `:operation_attributes` and `:job_attributes` - extra attributes for each group, as
       `{syntax, name, value}` tuples (see `Hippy.Encoder.encode/1`). Each replaces an attribute
@@ -27,7 +27,7 @@ defmodule Hippy.Operation.PrintJob do
   @def_charset "utf-8"
   @def_lang "en"
   @def_job_name "Untitled Job"
-  @def_orientation Hippy.Protocol.Orientation.portrait()
+  @def_orientation Hippy.IPP.Orientation.portrait()
 
   @enforce_keys [:printer_uri, :document]
 
@@ -59,7 +59,7 @@ end
 defimpl Hippy.Operation, for: Hippy.Operation.PrintJob do
   def build_request(op) do
     Hippy.Request.new(
-      Hippy.Protocol.Operation.print_job(),
+      Hippy.IPP.Operation.print_job(),
       op,
       [{:name_without_language, "job-name", op.job_name}] ++ document_format(op),
       job_attributes: [{:enum, "orientation-requested", op.orientation}],

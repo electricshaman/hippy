@@ -1,5 +1,5 @@
-defmodule Hippy.Protocol.Finishing do
-  use Hippy.Protocol.Enum, %{
+defmodule Hippy.IPP.Finishing do
+  use Hippy.IPP.Enum, %{
     none: 3,
     staple: 4,
     punch: 5,

@@ -1,5 +1,5 @@
-defmodule Hippy.Protocol.JobState do
-  use Hippy.Protocol.Enum, %{
+defmodule Hippy.IPP.JobState do
+  use Hippy.IPP.Enum, %{
     pending: 0x3,
     pending_held: 0x4,
     processing: 0x5,

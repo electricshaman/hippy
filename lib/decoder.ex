@@ -23,7 +23,7 @@ defmodule Hippy.Decoder do
 
   defp status_code({res, bin}) do
     <<status_code::16-signed, rest::binary>> = bin
-    status = Hippy.Protocol.StatusCode.decode!(status_code)
+    status = Hippy.IPP.StatusCode.decode!(status_code)
     {%{res | status_code: status}, rest}
   end
 

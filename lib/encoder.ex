@@ -4,7 +4,7 @@ defmodule Hippy.Encoder do
   """
 
   alias Hippy.Request
-  alias Hippy.Protocol.{DelimiterTag, ResolutionUnit, ValueTag}
+  alias Hippy.IPP.{DelimiterTag, ResolutionUnit, ValueTag}
 
   @string_syntaxes [
     :octet_string,

@@ -4,7 +4,7 @@ defmodule Hippy.EnumTest do
   alias Hippy.Decoder
 
   defmodule VendorState do
-    use Hippy.Protocol.Enum, %{
+    use Hippy.IPP.Enum, %{
       idle: 0x01,
       busy: 0x02
     }
@@ -31,12 +31,12 @@ defmodule Hippy.EnumTest do
 
   test "enum modules implement the behaviour" do
     for mod <- [
-          Hippy.Protocol.JobState,
-          Hippy.Protocol.Orientation,
-          Hippy.Protocol.PrinterType,
-          Hippy.Protocol.PrinterWifiState
+          Hippy.IPP.JobState,
+          Hippy.IPP.Orientation,
+          Hippy.IPP.PrinterType,
+          Hippy.IPP.PrinterWifiState
         ] do
-      assert Hippy.Protocol.Enum in Keyword.get(mod.module_info(:attributes), :behaviour, [])
+      assert Hippy.IPP.Enum in Keyword.get(mod.module_info(:attributes), :behaviour, [])
     end
   end
 
@@ -77,7 +77,7 @@ defmodule Hippy.EnumTest do
   test "config overrides built-in enums" do
     put_enums(%{
       "printer-type" => VendorState,
-      "input-orientation-requested" => Hippy.Protocol.Orientation
+      "input-orientation-requested" => Hippy.IPP.Orientation
     })
 
     attrs = decode_printer_attributes([{"printer-type", 1}, {"input-orientation-requested", 4}])
