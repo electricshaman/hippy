@@ -75,6 +75,27 @@ defmodule Hippy.Integration.CupsTest do
       end
     end
 
+    test "CUPS-Get-Printers keeps each printer's values aligned", %{http: http} do
+      req = %Hippy.Request{
+        operation_id: Hippy.IPP.Operation.cups_get_printers(),
+        operation_attributes: [
+          {:charset, "attributes-charset", "utf-8"},
+          {:natural_language, "attributes-natural-language", "en"},
+          {:keyword, "requested-attributes", ["printer-name", "printer-state"]}
+        ]
+      }
+
+      {:ok, res} = Hippy.Server.send_request(req, "#{http}/")
+      printers = Response.printer(res)
+
+      states =
+        Enum.zip(printers["printer-name"], printers["printer-state"]) |> Map.new()
+
+      assert map_size(states) == 6
+      assert states["held_jobs"] == :stopped
+      assert states["raw"] == :idle
+    end
+
     test "accepts an ipp:// printer URI", %{http: http} do
       uri = String.replace(printer(http, "raw"), "http://", "ipp://")
       assert send!(GetPrinterAttributes.new(uri)).status_code == :successful_ok
@@ -271,9 +292,13 @@ defmodule Hippy.Integration.CupsTest do
     end
 
     test "a pinned self-signed certificate is accepted (as in the README)", ctx do
+      op = GetPrinterAttributes.new(printer(ctx.https, "raw"))
+
+      # CUPS creates its certificate on the first HTTPS connection, which may not have happened
+      # yet depending on test order.
+      send!(op, @anonymous)
       pem = container_exec(ctx.container, ["sh", "-c", "cat /etc/cups/ssl/*.crt"])
       [{:Certificate, pinned, _}] = :public_key.pem_decode(pem)
-      op = GetPrinterAttributes.new(printer(ctx.https, "raw"))
 
       # Erlang never trusts a self-signed server certificate through cacerts.
       capture_log(fn ->

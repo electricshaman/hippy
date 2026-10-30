@@ -95,16 +95,15 @@ defmodule Hippy.Decoder do
 
   defp finish_groups(groups, res) do
     Enum.reduce(groups, res, fn group, res ->
-      val = Enum.reverse(res[group]) |> merge_duplicates(group)
+      # Groups are collected in reverse, each one in order.
+      groups = res[group] |> Enum.reverse() |> Enum.map(&merge_duplicates/1)
+
+      val = if group in @repeated_groups, do: groups, else: combine_groups(groups)
       Map.put(res, group, val)
     end)
   end
 
-  defp merge_duplicates(groups, group) when group in @repeated_groups do
-    Enum.map(groups, &merge_duplicates(&1, nil))
-  end
-
-  defp merge_duplicates(attributes, _group) do
+  defp merge_duplicates(attributes) do
     # Some printers repeat an attribute name within a group, which IPP doesn't allow.
     # Merge the values so none are lost, keeping the position of the first occurrence.
     by_name = Enum.group_by(attributes, &elem(&1, 1))
@@ -121,6 +120,25 @@ defmodule Hippy.Decoder do
             [value] -> {syntax, name, value}
             values -> {syntax, name, values}
           end
+      end
+    end)
+  end
+
+  # Groups such as printer attributes are returned as one flat group. When a response has several
+  # (e.g. one per printer from CUPS-Get-Printers), attributes with the same name are combined
+  # into a list with every group's values, in order, so the lists stay aligned by position.
+  defp combine_groups([group]), do: group
+
+  defp combine_groups(groups) do
+    attributes = Enum.concat(groups)
+    by_name = Enum.group_by(attributes, &elem(&1, 1))
+
+    attributes
+    |> Enum.uniq_by(&elem(&1, 1))
+    |> Enum.map(fn {syntax, name, _value} = first ->
+      case by_name[name] do
+        [_single] -> first
+        all -> {syntax, name, Enum.flat_map(all, &List.wrap(elem(&1, 2)))}
       end
     end)
   end
@@ -147,13 +165,9 @@ defmodule Hippy.Decoder do
     [Hippy.AttributeTransform.handle_attribute(attribute) | acc]
   end
 
-  defp add_to_group(group, res, acc) when group in @repeated_groups do
-    [Enum.reverse(acc) | res[group]]
-  end
-
   defp add_to_group(group, res, acc) do
-    # Both acc and the group are kept in reverse order until finish_groups/2.
-    acc ++ res[group]
+    # Every group is collected separately, in reverse order, until finish_groups/2.
+    [Enum.reverse(acc) | res[group]]
   end
 
   defp data({res, _acc, bin}) do
