@@ -125,6 +125,9 @@ defmodule Hippy.ServerTest do
       assert_received {:request, %{host: "legacy.example", port: 80}}
 
       assert Server.send_operation(op, endpoint: nil) == {:error, :printer_uri_required}
+
+      {:ok, _} = Server.send_operation(Hippy.Operation.CupsGetPrinters.new("ipp://cups.example/"))
+      assert_received {:request, %{host: "cups.example", port: 631, request_path: "/"}}
     end
   end
 

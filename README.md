@@ -186,6 +186,24 @@ Hippy.Operation.GetJobs.new("http://localhost:631/printers/HP_Color_LaserJet")
  }}
 ```
 
+### List the printers on a CUPS server
+
+CUPS-Get-Printers is sent to the server rather than a printer. CUPS includes classes in the results; `printer_type: 0, printer_type_mask: 1` leaves them out, and `Hippy.Operation.CupsGetClasses` returns only classes. `Hippy.Operation.CupsGetDefault` returns the default printer.
+
+```elixir
+{:ok, res} =
+  Hippy.Operation.CupsGetPrinters.new("ipp://localhost:631/",
+    requested_attributes: ["printer-name", "printer-state"]
+  )
+  |> Hippy.send_operation()
+
+Hippy.Response.printers(res)
+[
+  %{"printer-name" => "HP_Color_LaserJet", "printer-state" => :idle},
+  %{"printer-name" => "Label_Printer", "printer-state" => :stopped}
+]
+```
+
 ### Convert the response to maps for easier access by key
 
 `Hippy.Response` has functions that return attributes as maps of names to values:

@@ -15,6 +15,13 @@
 
 ### Added
 
+- `Hippy.Operation.CupsGetPrinters`, `CupsGetClasses` and `CupsGetDefault`, for listing the
+  printers and classes on a CUPS server and getting its default printer. They take the server's
+  URI (e.g. `"ipp://localhost:631/"`) and CUPS's filters (`limit:`, `first_printer_name:`,
+  `printer_location:`, `printer_type:`/`printer_type_mask:`).
+- Operations addressed to the server rather than a printer: an operation with a `server_uri`
+  field instead of `printer_uri` is sent to that URI, and `Hippy.Request.new/4` leaves out the
+  `printer-uri` attribute for it.
 - `Hippy.Response.printers/1` returns a map per printer.
 
 ## 0.5.1 (2026-10-30)

@@ -11,7 +11,18 @@ defmodule Hippy.Integration.CupsTest do
   import ExUnit.CaptureLog
 
   alias Hippy.Response
-  alias Hippy.Operation.{CancelJob, GetJobAttributes, GetJobs, GetPrinterAttributes, PrintJob}
+
+  alias Hippy.Operation.{
+    CancelJob,
+    CupsGetClasses,
+    CupsGetDefault,
+    CupsGetPrinters,
+    GetJobAttributes,
+    GetJobs,
+    GetPrinterAttributes,
+    PrintJob
+  }
+
   alias Hippy.IPP.Orientation
 
   @moduletag :cups
@@ -77,25 +88,6 @@ defmodule Hippy.Integration.CupsTest do
       end
     end
 
-    test "CUPS-Get-Printers returns each printer separately", %{http: http} do
-      req = %Hippy.Request{
-        operation_id: Hippy.IPP.Operation.cups_get_printers(),
-        operation_attributes: [
-          {:charset, "attributes-charset", "utf-8"},
-          {:natural_language, "attributes-natural-language", "en"},
-          {:keyword, "requested-attributes", ["printer-name", "printer-state"]}
-        ]
-      }
-
-      {:ok, res} = Hippy.Server.send_request(req, "#{http}/")
-      states = Map.new(Response.printers(res), &{&1["printer-name"], &1["printer-state"]})
-
-      assert length(res.printer_attributes) == 6
-      assert map_size(states) == 6
-      assert states["held_jobs"] == :stopped
-      assert states["raw"] == :idle
-    end
-
     test "accepts an ipp:// printer URI", %{http: http} do
       uri = String.replace(printer(http, "raw"), "http://", "ipp://")
       assert send!(GetPrinterAttributes.new(uri)).status_code == :successful_ok
@@ -116,6 +108,47 @@ defmodule Hippy.Integration.CupsTest do
         |> Enum.map(fn {:ok, status} -> status end)
 
       assert Enum.all?(statuses, &(&1 == :successful_ok))
+    end
+  end
+
+  describe "CUPS server operations" do
+    @queues ~w(filtered held_cancel held_jobs raw rejecting secure)
+
+    defp names(res), do: Enum.map(Response.printers(res), & &1["printer-name"])
+
+    test "CUPS-Get-Printers returns each printer and class separately", %{http: http} do
+      res =
+        send!(
+          CupsGetPrinters.new("#{http}/", requested_attributes: ["printer-name", "printer-state"])
+        )
+
+      states = Map.new(Response.printers(res), &{&1["printer-name"], &1["printer-state"]})
+
+      assert res.status_code == :successful_ok
+      assert names(res) == Enum.sort(["raw_class" | @queues])
+      assert states["held_jobs"] == :stopped
+      assert states["raw"] == :idle
+    end
+
+    test "CUPS-Get-Printers filters by type, and pages with limit and first-printer-name", ctx do
+      op = &CupsGetPrinters.new("#{ctx.http}/", [requested_attributes: ["printer-name"]] ++ &1)
+
+      assert names(send!(op.(printer_type: 0, printer_type_mask: 1))) == @queues
+      assert names(send!(op.(printer_type: 1, printer_type_mask: 1))) == ["raw_class"]
+      assert names(send!(op.(limit: 2))) == ["filtered", "held_cancel"]
+      assert names(send!(op.(first_printer_name: "raw", limit: 2))) == ["raw", "raw_class"]
+    end
+
+    test "CUPS-Get-Classes returns classes and their members", %{http: http} do
+      res = send!(CupsGetClasses.new("#{http}/"))
+
+      assert [%{"printer-name" => "raw_class", "member-names" => ["raw", "filtered"]}] =
+               Response.printers(res)
+    end
+
+    test "CUPS-Get-Default returns the default printer", %{http: http} do
+      res = send!(CupsGetDefault.new("#{http}/", requested_attributes: ["printer-name"]))
+      assert Response.printer(res) == %{"printer-name" => "raw"}
     end
   end
 

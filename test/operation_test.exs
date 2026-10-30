@@ -2,7 +2,17 @@ defmodule Hippy.OperationTest do
   use ExUnit.Case, async: true
 
   alias Hippy.Operation
-  alias Hippy.Operation.{CancelJob, GetJobAttributes, GetJobs, GetPrinterAttributes, PrintJob}
+
+  alias Hippy.Operation.{
+    CancelJob,
+    CupsGetClasses,
+    CupsGetDefault,
+    CupsGetPrinters,
+    GetJobAttributes,
+    GetJobs,
+    GetPrinterAttributes,
+    PrintJob
+  }
 
   @uri "http://localhost:631/printers/p"
 
@@ -54,6 +64,46 @@ defmodule Hippy.OperationTest do
            ]
   end
 
+  describe "CUPS server operations" do
+    test "have no printer-uri, and only send the filters given" do
+      req = Operation.build_request(CupsGetPrinters.new("ipp://localhost:631/"))
+
+      assert req.operation_id == 0x4002
+
+      assert req.operation_attributes == [
+               {:charset, "attributes-charset", "utf-8"},
+               {:natural_language, "attributes-natural-language", "en"},
+               {{:set1, :keyword}, "requested-attributes", ["all"]}
+             ]
+
+      req =
+        CupsGetClasses.new("ipp://localhost:631/",
+          requested_attributes: ["printer-name"],
+          limit: 5,
+          first_printer_name: "b",
+          printer_location: "Lab",
+          printer_type: 0,
+          printer_type_mask: 1
+        )
+        |> Operation.build_request()
+
+      assert req.operation_id == 0x4005
+
+      assert Enum.drop(req.operation_attributes, 2) == [
+               {{:set1, :keyword}, "requested-attributes", ["printer-name"]},
+               {:integer, "limit", 5},
+               {:name_without_language, "first-printer-name", "b"},
+               {:text_without_language, "printer-location", "Lab"},
+               {:enum, "printer-type", 0},
+               {:enum, "printer-type-mask", 1}
+             ]
+
+      req = Operation.build_request(CupsGetDefault.new("ipp://localhost:631/"))
+      assert req.operation_id == 0x4001
+      refute List.keymember?(req.operation_attributes, "printer-uri", 1)
+    end
+  end
+
   test "every operation accepts operation attributes" do
     extra = {:name_without_language, "requesting-user-name", "hippy"}
 
@@ -62,7 +112,10 @@ defmodule Hippy.OperationTest do
           GetJobs.new(@uri, operation_attributes: [extra]),
           GetJobAttributes.new(@uri, 1, operation_attributes: [extra]),
           CancelJob.new(@uri, 1, operation_attributes: [extra]),
-          PrintJob.new(@uri, "doc", operation_attributes: [extra])
+          PrintJob.new(@uri, "doc", operation_attributes: [extra]),
+          CupsGetPrinters.new(@uri, operation_attributes: [extra]),
+          CupsGetClasses.new(@uri, operation_attributes: [extra]),
+          CupsGetDefault.new(@uri, operation_attributes: [extra])
         ] do
       assert List.last(Operation.build_request(op).operation_attributes) == extra
     end
