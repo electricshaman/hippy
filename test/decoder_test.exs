@@ -11,6 +11,9 @@ defmodule Hippy.DecoderTest do
   defp keyword(name, value),
     do: <<0x44, byte_size(name)::16, name::binary, byte_size(value)::16, value::binary>>
 
+  defp name(name, value),
+    do: <<0x42, byte_size(name)::16, name::binary, byte_size(value)::16, value::binary>>
+
   defp enum(name, value), do: <<0x23, byte_size(name)::16, name::binary, 4::16, value::32>>
 
   test "decodes captured Get-Printer-Attributes response" do
@@ -139,6 +142,28 @@ defmodule Hippy.DecoderTest do
 
       assert res.printer_attributes == [{:enum, "printer-state", [:idle, :stopped]}]
     end
+  end
+
+  test "several printer groups keep every value, aligned by position" do
+    # e.g. CUPS-Get-Printers, which returns one printer attributes group per printer.
+    printer = fn name, state, reason ->
+      <<0x04>> <>
+        name("printer-name", name) <> enum("printer-state", state) <> keyword("r", reason)
+    end
+
+    res =
+      Decoder.decode(
+        response(
+          printer.("front-desk", 3, "none") <>
+            printer.("warehouse", 5, "none") <> printer.("lab", 3, "media-empty")
+        )
+      )
+
+    assert res.printer_attributes == [
+             {:name_without_language, "printer-name", ["front-desk", "warehouse", "lab"]},
+             {:enum, "printer-state", [:idle, :stopped, :idle]},
+             {:keyword, "r", ["none", "none", "media-empty"]}
+           ]
   end
 
   test "merges attributes repeated by name within a group" do

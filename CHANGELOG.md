@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixes
+
+- Responses with several printer attribute groups (such as CUPS-Get-Printers, one group per
+  printer) keep every printer's values again, so the combined lists stay aligned by position.
+  0.5.0 dropped repeated values across printers (regression in 0.5.0).
+
 ## 0.5.0 (2026-10-29)
 
 ### Breaking changes
