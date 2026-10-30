@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.1 (2026-10-30)
+
 ### Fixes
 
 - Responses with several printer attribute groups (such as CUPS-Get-Printers, one group per
