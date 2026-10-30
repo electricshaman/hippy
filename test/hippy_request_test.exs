@@ -103,6 +103,70 @@ defmodule Hippy.RequestTest do
            ]
   end
 
+  test "documents can be streamed, and arrive as the same bytes" do
+    chunks = for n <- 1..50, do: :binary.copy(<<n>>, 1000)
+
+    {:ok, _} = Hippy.request(@printer, :print_job, %{}, document: Stream.map(chunks, & &1))
+    assert_received {:request, _, streamed}
+
+    {:ok, _} = Hippy.request(@printer, :print_job, %{}, document: Enum.join(chunks))
+    assert_received {:request, _, binary}
+
+    # Request ids differ; everything else is the same.
+    <<header::binary-size(4), _id::32, rest::binary>> = streamed
+    assert <<^header::binary-size(4), _::32, ^rest::binary>> = binary
+    assert String.ends_with?(streamed, Enum.join(chunks))
+  end
+
+  test "streamed documents are sent with chunked transfer encoding, not buffered" do
+    # A bare TCP server, so the request goes through Req's real HTTP client rather than the
+    # Req.Test plug configured for tests.
+    configured = Application.get_env(:hippy, :req_options)
+    Application.put_env(:hippy, :req_options, [])
+    on_exit(fn -> Application.put_env(:hippy, :req_options, configured) end)
+
+    {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
+    {:ok, port} = :inet.port(listen)
+    test = self()
+    response = File.read!("test/captures/ipp_get_jobs_res.bin")
+
+    spawn_link(fn ->
+      {:ok, socket} = :gen_tcp.accept(listen)
+      request = read_until(socket, "0\r\n\r\n", "")
+      send(test, {:raw_request, request})
+
+      :gen_tcp.send(socket, [
+        "HTTP/1.1 200 OK\r\ncontent-type: application/ipp\r\n",
+        "content-length: #{byte_size(response)}\r\nconnection: close\r\n\r\n",
+        response
+      ])
+
+      :gen_tcp.close(socket)
+    end)
+
+    document = Stream.map(1..3, &:binary.copy(<<?a + &1>>, 10_000))
+
+    {:ok, _} =
+      Hippy.request("ipp://localhost:#{port}/printers/p", :print_job, %{}, document: document)
+
+    assert_received {:raw_request, request}
+    [headers, _body] = String.split(request, "\r\n\r\n", parts: 2)
+    headers = String.downcase(headers)
+
+    assert headers =~ "transfer-encoding: chunked"
+    refute headers =~ "content-length"
+    assert request =~ :binary.copy("c", 10_000)
+  end
+
+  defp read_until(socket, terminator, acc) do
+    if String.ends_with?(acc, terminator) do
+      acc
+    else
+      {:ok, data} = :gen_tcp.recv(socket, 0, 5000)
+      read_until(socket, terminator, acc <> data)
+    end
+  end
+
   test "unknown operation names return an error" do
     assert Hippy.request(@printer, :print_everything) ==
              {:error, {:unknown_operation, :print_everything}}

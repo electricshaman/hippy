@@ -536,6 +536,28 @@ defmodule Hippy.Integration.CupsTest do
       assert wait_for_state(uri, id) == :completed
     end
 
+    test "streamed documents arrive whole", %{http: http} do
+      uri = printer(http, "raw")
+      chunks = Stream.repeatedly(fn -> :crypto.strong_rand_bytes(64_000) end) |> Stream.take(400)
+
+      id = print!(PrintJob.new(uri, chunks))
+      assert wait_for_state(uri, id) == :completed
+      # 400 × 64,000 bytes.
+      assert job_attributes!(uri, id)["job-k-octets"] == 25_000
+    end
+
+    @tag :tmp_dir
+    test "a document streamed from a file goes through the filters",
+         %{http: http, tmp_dir: dir} = ctx do
+      path = Path.join(dir, "doc.pdf")
+      File.write!(path, pdf())
+      uri = printer(http, "filtered")
+
+      id = print!(PrintJob.new(uri, File.stream!(path), document_format: "application/pdf"))
+      assert wait_for_state(uri, id) == :completed
+      assert container_exec(ctx.container, ["head", "-c", "4", "/spool/filtered.ps"]) == "%!PS"
+    end
+
     test "large documents", %{http: http} do
       uri = printer(http, "raw")
       id = print!(PrintJob.new(uri, :crypto.strong_rand_bytes(25 * 1024 * 1024)))

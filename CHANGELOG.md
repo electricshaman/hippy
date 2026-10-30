@@ -26,6 +26,10 @@
 
 ### Added
 
+- Documents can be streamed: Print-Job's document (and `Hippy.request/4`'s `document:`) can be an
+  `Enumerable` of binaries such as a `File.stream!` stream, which is sent with chunked transfer
+  encoding as it's read instead of being loaded into memory. `Hippy.Encoder.encode/1` then
+  returns a stream.
 - `Hippy.request/4` sends any operation, by name or id, with attributes as a map, e.g.
   `Hippy.request(uri, :validate_job, %{"copies" => 2})`. A job URI is sent as `job-uri`, CUPS's
   server-wide operations have no `printer-uri`, and `target:` overrides either. It takes
