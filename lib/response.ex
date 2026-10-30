@@ -3,8 +3,10 @@ defmodule Hippy.Response do
   A decoded IPP response.
 
   Attributes are kept as `{syntax, name, value}` tuples in the order the printer sent them.
-  `job_attributes` is a list of groups, one per job, and so are `subscription_attributes`,
-  `event_notification_attributes`, `resource_attributes` and `document_attributes`.
+  `job_attributes` is a list of groups, one per job, and `printer_attributes` is a list of groups,
+  one per printer (Get-Printer-Attributes returns one, CUPS-Get-Printers one per printer). So are
+  `subscription_attributes`, `event_notification_attributes`, `resource_attributes` and
+  `document_attributes`.
   `unknown_attributes` holds attributes from group tags not assigned by IANA. The functions in this module return
   attributes as maps of names to values instead:
 
@@ -41,8 +43,18 @@ defmodule Hippy.Response do
   @doc "Returns each job in the response as a map, such as for Get-Jobs."
   def jobs(%__MODULE__{job_attributes: jobs}), do: Enum.map(jobs, &AttributeGroup.to_map/1)
 
-  @doc "Returns the printer attributes as a map, such as for Get-Printer-Attributes."
-  def printer(%__MODULE__{printer_attributes: attributes}), do: AttributeGroup.to_map(attributes)
+  @doc """
+  Returns the printer in the response as a map, or `nil` if there is none.
+
+  For responses about a single printer, such as Get-Printer-Attributes. When the response has
+  several printers, returns the first one.
+  """
+  def printer(%__MODULE__{printer_attributes: [first | _]}), do: AttributeGroup.to_map(first)
+  def printer(%__MODULE__{}), do: nil
+
+  @doc "Returns each printer in the response as a map, such as for CUPS-Get-Printers."
+  def printers(%__MODULE__{printer_attributes: printers}),
+    do: Enum.map(printers, &AttributeGroup.to_map/1)
 
   @doc "Returns the operation attributes as a map (e.g. `status-message`)."
   def operation(%__MODULE__{operation_attributes: attributes}),
