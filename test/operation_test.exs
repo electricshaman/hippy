@@ -104,6 +104,17 @@ defmodule Hippy.OperationTest do
     end
   end
 
+  test "operations add their groups after any given to Request.new/4" do
+    subscription = {:subscription_attributes, [{:keyword, "notify-events", "job-completed"}]}
+
+    req = Operation.build_request(PrintJob.new(@uri, "doc", groups: [subscription]))
+    assert req.groups == [subscription]
+
+    printer = {:printer_attributes, [{:text_without_language, "printer-location", "Lab"}]}
+    op = GetPrinterAttributes.new(@uri, groups: [subscription])
+    assert Hippy.Request.new(0x0B, op, [], groups: [printer]).groups == [printer, subscription]
+  end
+
   test "every operation accepts operation attributes" do
     extra = {:name_without_language, "requesting-user-name", "hippy"}
 

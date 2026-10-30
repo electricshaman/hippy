@@ -63,8 +63,27 @@ defmodule Hippy.Encoder do
           end
       end
 
-    <<operation_attributes_bin::binary, job_attributes_bin::binary,
+    groups_bin = for group <- req.groups, into: <<>>, do: encode_group(group)
+
+    <<operation_attributes_bin::binary, job_attributes_bin::binary, groups_bin::binary,
       DelimiterTag.end_of_attributes()::8-signed, req.data::binary>>
+  end
+
+  defp encode_group({tag, attributes})
+       when tag not in [:operation_attributes, :end_of_attributes] do
+    case DelimiterTag.encode(tag) do
+      {:ok, value} ->
+        for attribute <- attributes, into: <<value::8>>, do: encode_attribute(attribute)
+
+      {:error, _} ->
+        raise ArgumentError, "unknown attribute group #{inspect(tag)}"
+    end
+  end
+
+  defp encode_group(group) do
+    raise ArgumentError,
+          "invalid attribute group #{inspect(group)} (operation attributes always come first, " <>
+            "in operation_attributes)"
   end
 
   defp encode_attribute({{:set1, syntax}, name, values}) when is_list(values) do

@@ -3,6 +3,18 @@ defmodule Hippy.Request do
   An IPP request, built from an operation by `Hippy.Operation.build_request/1`.
 
   `request_id` is assigned by `Hippy.Server` when the request is sent, unless it's already set.
+
+  Attribute groups other than operation and job attributes go in `groups`, as an ordered list of
+  `{tag, attributes}`, where `tag` is a `Hippy.IPP.DelimiterTag` name. For example, the printer
+  attributes for CUPS-Add-Modify-Printer, or one subscription group per subscription for
+  Create-Printer-Subscriptions:
+
+      groups: [
+        {:subscription_attributes, [{:keyword, "notify-pull-method", "ippget"}]},
+        {:subscription_attributes, [{:keyword, "notify-events", "job-completed"}]}
+      ]
+
+  They're encoded after the operation and job attributes, in order.
   """
 
   defstruct version: Hippy.IPPVersion.new(1, 1),
@@ -10,6 +22,7 @@ defmodule Hippy.Request do
             request_id: nil,
             operation_attributes: [],
             job_attributes: [],
+            groups: [],
             data: <<>>
 
   @doc """
@@ -23,7 +36,8 @@ defmodule Hippy.Request do
 
   Attributes in the operation's `operation_attributes` and `job_attributes` fields, if it has
   them, are added to the matching group. Each replaces an attribute of the same name, so callers
-  can override the defaults.
+  can override the defaults. Groups in the operation's `groups` field are added after any given
+  in `fields`.
   """
   def new(operation_id, op, attributes \\ [], fields \\ []) do
     operation_attributes =
@@ -38,13 +52,16 @@ defmodule Hippy.Request do
       |> Keyword.get(:job_attributes, [])
       |> merge(Map.get(op, :job_attributes, []))
 
+    groups = Keyword.get(fields, :groups, []) ++ Map.get(op, :groups, [])
+
     struct!(
       %__MODULE__{
         operation_id: operation_id,
         operation_attributes: operation_attributes,
-        job_attributes: job_attributes
+        job_attributes: job_attributes,
+        groups: groups
       },
-      Keyword.delete(fields, :job_attributes)
+      Keyword.drop(fields, [:job_attributes, :groups])
     )
   end
 

@@ -17,7 +17,8 @@ defmodule Hippy.Operation.CancelJob do
             job_id: nil,
             charset: @def_charset,
             language: @def_lang,
-            operation_attributes: []
+            operation_attributes: [],
+            groups: []
 
   def new(printer_uri, job_id, opts \\ []) do
     %__MODULE__{
@@ -25,7 +26,8 @@ defmodule Hippy.Operation.CancelJob do
       job_id: job_id,
       charset: Keyword.get(opts, :charset, @def_charset),
       language: Keyword.get(opts, :language, @def_lang),
-      operation_attributes: Keyword.get(opts, :operation_attributes, [])
+      operation_attributes: Keyword.get(opts, :operation_attributes, []),
+      groups: Keyword.get(opts, :groups, [])
     }
   end
 end

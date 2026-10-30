@@ -18,6 +18,7 @@ defmodule Hippy.Operation.GetJobs do
             charset: @def_charset,
             language: @def_lang,
             operation_attributes: [],
+            groups: [],
             which_jobs: @def_jobs,
             requested_attributes: @def_atts
 
@@ -27,6 +28,7 @@ defmodule Hippy.Operation.GetJobs do
       charset: Keyword.get(opts, :charset, @def_charset),
       language: Keyword.get(opts, :language, @def_lang),
       operation_attributes: Keyword.get(opts, :operation_attributes, []),
+      groups: Keyword.get(opts, :groups, []),
       which_jobs: Keyword.get(opts, :which_jobs, @def_jobs),
       requested_attributes: Keyword.get(opts, :requested_attributes, @def_atts)
     }
