@@ -4,6 +4,12 @@
 
 ### Breaking changes
 
+- Attributes the IANA registry defines as sets (`1setOf`) are always lists in
+  `AttributeGroup.to_map/1` and the `Hippy.Response` map helpers, even with a single value. For
+  example `Hippy.Response.job(res)["job-state-reasons"]` is now `["none"]` rather than `"none"`.
+  Before, the type depended on how many values the printer sent. Attributes the registry
+  doesn't know, and out-of-band values such as `:no_value`, are unchanged, and so are the
+  tuples in `Hippy.Response`'s fields.
 - `Hippy.Response.printer_attributes` is now a list of groups, one per printer, like
   `job_attributes`. Responses with several printers, such as CUPS-Get-Printers, used to be
   flattened into one group, with each attribute's values combined into a list across printers,

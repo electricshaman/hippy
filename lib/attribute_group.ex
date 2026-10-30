@@ -1,5 +1,10 @@
 defmodule Hippy.AttributeGroup do
-  @moduledoc "Contains functions for working with attribute groups."
+  @moduledoc """
+  Contains functions for working with attribute groups.
+
+  `to_map/1` returns a group as a map of attribute names to values. Attributes the IANA registry
+  defines as sets (such as `job-state-reasons`) are always lists, even with a single value.
+  """
 
   def to_map([]) do
     Map.new()
@@ -32,21 +37,32 @@ defmodule Hippy.AttributeGroup do
     Enum.reduce(group, %{}, &att_to_map/2)
   end
 
-  # Struct
-  defp att_to_map({_syntax, name, %_{} = value}, acc) do
-    Map.put(acc, name, value)
+  defp att_to_map({syntax, name, value}, acc) do
+    Map.put(acc, name, wrap_set(syntax, name, map_value(value)))
   end
 
-  defp att_to_map({_syntax, name, value}, acc) when is_map(value) do
-    Map.put(acc, name, compact(value))
-  end
+  defp map_value(%_{} = struct), do: struct
+  defp map_value(map) when is_map(map), do: compact(map)
+  defp map_value([head | _] = values) when is_map(head), do: Enum.map(values, &compact/1)
+  defp map_value(value), do: value
 
-  defp att_to_map({_syntax, name, value}, acc) when is_list(value) and is_map(hd(value)) do
-    Map.put(acc, name, Enum.map(value, fn i -> compact(i) end))
-  end
+  @out_of_band [
+    :unsupported,
+    :unknown,
+    :no_value,
+    :not_settable,
+    :delete_attribute,
+    :admin_define
+  ]
 
-  defp att_to_map({_syntax, name, value}, acc) do
-    Map.put(acc, name, value)
+  # Attributes the IANA registry defines as sets (1setOf) are always lists, even with one value,
+  # so callers don't have to handle both. Attributes it doesn't know are left as they are, and so
+  # are out-of-band values such as :no_value.
+  defp wrap_set(syntax, _name, value) when syntax in @out_of_band, do: value
+  defp wrap_set(_syntax, _name, value) when is_list(value), do: value
+
+  defp wrap_set(_syntax, name, value) do
+    if Hippy.IPP.Attributes.set?(name), do: [value], else: value
   end
 
   def compact(%_{} = struct) do
