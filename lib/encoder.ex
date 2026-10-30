@@ -90,6 +90,16 @@ defmodule Hippy.Encoder do
     encode_attribute({syntax, name, values})
   end
 
+  # An additional value of the previous attribute, as decoded with raw: true.
+  defp encode_attribute({syntax, nil, value}), do: encode_attribute({syntax, "", value})
+
+  # A collection given as an ordered list of {member, value}, as decoded with raw: true.
+  defp encode_attribute({:collection, name, [{member, _} | _] = members})
+       when is_binary(name) and is_binary(member) do
+    <<value_tag(:collection)::8, byte_size(name)::16, name::binary,
+      encode_value(:collection, name, members)::binary>>
+  end
+
   defp encode_attribute({syntax, name, [first | rest]}) when is_binary(name) do
     # Additional values of a multi-valued attribute have an empty name.
     for value <- rest, into: encode_attribute({syntax, name, first}) do
@@ -119,6 +129,8 @@ defmodule Hippy.Encoder do
     <<1::16, if(value, do: 1, else: 0)::8>>
   end
 
+  defp encode_value(:boolean, _name, value) when value in [0, 1], do: <<1::16, value::8>>
+
   defp encode_value(:uri, name, %URI{} = value) do
     encode_value(:uri, name, URI.to_string(value))
   end
@@ -146,6 +158,20 @@ defmodule Hippy.Encoder do
       rem(abs(offset), 60)::8>>
   end
 
+  # Dates, resolutions and ranges as decoded with raw: true.
+  defp encode_value(:datetime, _name, {y, mo, d, h, min, s, ds, dir, off_h, off_min})
+       when dir in ["+", "-"] do
+    <<11::16, y::16, mo::8, d::8, h::8, min::8, s::8, ds::8, dir::binary, off_h::8, off_min::8>>
+  end
+
+  defp encode_value(:resolution, _name, {xfeed, feed, unit}) when is_integer(unit) do
+    <<9::16, xfeed::32-signed, feed::32-signed, unit::8>>
+  end
+
+  defp encode_value(:range_of_integer, _name, {lower, upper}) do
+    <<8::16, lower::32-signed, upper::32-signed>>
+  end
+
   defp encode_value(:range_of_integer, _name, first..last//_) do
     <<8::16, first::32-signed, last::32-signed>>
   end
@@ -155,7 +181,7 @@ defmodule Hippy.Encoder do
       ResolutionUnit.encode!(value.unit)::8>>
   end
 
-  defp encode_value(:collection, name, members) when is_map(members) do
+  defp encode_value(:collection, name, members) when is_map(members) or is_list(members) do
     members_bin =
       for {member, value} <- members, into: <<>> do
         <<ValueTag.member_attr_name()::8, 0::16, byte_size(member)::16, member::binary,

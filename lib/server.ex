@@ -15,6 +15,8 @@ defmodule Hippy.Server do
       `req_options: [auth: {:basic, "user:pass"}]`.
     * `:endpoint` - the URL to send the request to, instead of the one derived from
       `printer_uri`.
+    * `:raw` - when `true`, return the response exactly as it was sent (see
+      `Hippy.Decoder.decode/2`).
 
   For compatibility, the second argument can also be the endpoint URL.
   """
@@ -34,14 +36,14 @@ defmodule Hippy.Server do
   @doc """
   Sends a request to an endpoint URL and decodes the response.
 
-  Takes the same `:req_options` option as `send_operation/2`.
+  Takes the same `:req_options` and `:raw` options as `send_operation/2`.
   """
   def send_request(%Hippy.Request{} = req, endpoint, opts \\ []) do
     req = %{req | request_id: req.request_id || System.unique_integer([:positive, :monotonic])}
 
     case post(endpoint, Hippy.Encoder.encode(req), Keyword.get(opts, :req_options, [])) do
       {:ok, %Req.Response{status: 200, body: body}} ->
-        {:ok, Hippy.Decoder.decode(body)}
+        {:ok, Hippy.Decoder.decode(body, Keyword.take(opts, [:raw]))}
 
       {:ok, %Req.Response{status: status, body: body}} ->
         {:error, {:http_error, status, body}}

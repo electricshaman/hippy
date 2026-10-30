@@ -89,6 +89,41 @@ defmodule Hippy.Integration.CupsTest do
       end
     end
 
+    test "raw responses re-encode to the same bytes", %{http: http} do
+      for queue <- ["raw", "filtered", "held_jobs"] do
+        uri = printer(http, queue)
+
+        req =
+          Hippy.Operation.build_request(GetPrinterAttributes.new(uri)) |> Map.put(:request_id, 1)
+
+        %Req.Response{status: 200, body: bin} =
+          Req.post!(uri,
+            body: Hippy.Encoder.encode(req),
+            headers: [{"content-type", "application/ipp"}],
+            decode_body: false
+          )
+
+        raw = Hippy.Decoder.decode(bin, raw: true)
+        [printer] = raw.printer_attributes
+
+        reencoded =
+          Hippy.Encoder.encode(%Hippy.Request{
+            version: raw.version,
+            operation_id: raw.status_code,
+            request_id: raw.request_id,
+            operation_attributes: raw.operation_attributes,
+            groups: [{:printer_attributes, printer}],
+            data: raw.data
+          })
+
+        assert reencoded == bin, "#{queue} didn't round-trip"
+      end
+
+      {:ok, raw} = Hippy.send_operation(GetPrinterAttributes.new(printer(http, "raw")), raw: true)
+      assert raw.status_code == 0
+      assert {:enum, "printer-state", 3} in hd(raw.printer_attributes)
+    end
+
     test "accepts an ipp:// printer URI", %{http: http} do
       uri = String.replace(printer(http, "raw"), "http://", "ipp://")
       assert send!(GetPrinterAttributes.new(uri)).status_code == :successful_ok

@@ -10,11 +10,20 @@
   so there was no reliable way to tell which value belonged to which printer. Code reading
   `printer_attributes` directly needs to take the first group (or use `Hippy.Response.printer/1`).
   `AttributeGroup.to_map(res.printer_attributes)` still returns the first printer's map.
+- Value tags Hippy doesn't know now decode as `{tag, name, bytes}`, keeping the tag number and
+  raw bytes. Before, some were relabelled (e.g. as `:charset`, `:octet_string`, `:integer` or
+  `:out_of_band`), which lost the tag. Values that don't fit their tag (e.g. an integer that
+  isn't 4 bytes) are kept the same way.
 - `Hippy.Response.printer/1` returns `nil` instead of an empty map when there is no printer, like
   `Hippy.Response.job/1`.
 
 ### Added
 
+- `raw: true` on `Hippy.Decoder.decode/2`, `Hippy.send_operation/2` and
+  `Hippy.Server.send_request/3` returns the response exactly as it was sent: one tuple per
+  value, values as on the wire (enums and the status code as integers, URIs as strings, dates as
+  tuples, …) and collections as ordered member lists. `Hippy.Encoder.encode/1` accepts all of
+  these, and encoding a raw response's groups again gives the original bytes.
 - Requests can carry other attribute groups: `Hippy.Request` has a `groups` field, an ordered
   list of `{tag, attributes}` (e.g. `{:printer_attributes, [...]}` for CUPS-Add-Modify-Printer,
   or one `{:subscription_attributes, [...]}` per subscription), encoded after the operation and
@@ -28,6 +37,11 @@
   field instead of `printer_uri` is sent to that URI, and `Hippy.Request.new/4` leaves out the
   `printer-uri` attribute for it.
 - `Hippy.Response.printers/1` returns a map per printer.
+
+### Fixes
+
+- A status code Hippy doesn't know (e.g. a vendor one) is kept as an integer instead of
+  raising `Hippy.ValueError` and losing the whole response.
 
 ## 0.5.1 (2026-10-30)
 
