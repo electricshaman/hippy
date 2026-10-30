@@ -2,6 +2,12 @@ defmodule Hippy.Operation.PrintJob do
   @moduledoc """
   Represents a request to print a document using a printer on the IPP server.
 
+  The document is a binary, or an `Enumerable` of binaries, which is sent as it's read rather
+  than loaded into memory (see `Hippy.Encoder.encode/1`). For a file, stream it in chunks:
+  `File.stream!(path, 64_000)` on Elixir 1.16 and later, or `File.stream!(path, [], 64_000)` on
+  1.15. (Without a chunk size, `File.stream!/1` reads by line, which for a binary file such as a
+  PDF can mean one very large chunk.)
+
   ## Options
 
     * `:job_name` - defaults to `"Untitled Job"`.

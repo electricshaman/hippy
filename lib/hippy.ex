@@ -31,7 +31,9 @@ defmodule Hippy do
 
   ## Options
 
-    * `:document` - the document data, for Print-Job and Send-Document.
+    * `:document` - the document data, for Print-Job and Send-Document: a binary, or an
+      `Enumerable` of binaries, sent as it's read (see `Hippy.Operation.PrintJob` for streaming
+      a file).
     * `:target` - `:printer`, `:job` or `:server`, instead of working it out.
     * `:operation_attributes`, `:job_attributes` and `:groups` - attributes given explicitly as
       `{syntax, name, value}`, as for operations (see `Hippy.Request`).

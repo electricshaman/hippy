@@ -45,7 +45,21 @@ defmodule Hippy.Encoder do
 
   A list value is encoded as a multi-valued attribute, as is `{{:set1, syntax}, name, values}`.
   Raises `ArgumentError` for a value that can't be encoded.
+
+  The request's `data` (the document) is a binary, or an `Enumerable` of binaries such as
+  `File.stream!/2`. For a binary the whole request is returned as a binary. For an enumerable
+  it's returned as a stream (the encoded attributes, then the document's chunks as they're
+  read), so the document is never all in memory.
   """
+  def encode(%Request{data: data} = req) when not is_binary(data) do
+    if Enumerable.impl_for(data) == nil do
+      raise ArgumentError,
+            "data must be a binary or an Enumerable of binaries, got: #{inspect(data)}"
+    end
+
+    Stream.concat([encode(%{req | data: <<>>})], data)
+  end
+
   def encode(%Request{} = req) do
     operation_attributes_bin =
       for attribute <- req.operation_attributes, into: request_header(req) do

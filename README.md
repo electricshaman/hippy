@@ -129,6 +129,20 @@ Hippy.Operation.PrintJob.new(printer_uri, doc,
    version: %Hippy.IPPVersion{major: 1, minor: 1}
  }}
 ```
+### Stream a large document
+
+A document can also be an `Enumerable` of binaries, which is sent as it's read (with chunked transfer encoding) instead of being loaded into memory:
+
+```elixir
+# Elixir 1.16 and later. On 1.15, File.stream!("big.pdf", [], 64_000).
+Hippy.Operation.PrintJob.new(printer_uri, File.stream!("big.pdf", 64_000),
+  document_format: "application/pdf"
+)
+|> Hippy.send_operation()
+```
+
+Some embedded printers may not accept chunked requests; for those, read the file into a binary first.
+
 ### Send other attributes
 
 Every operation accepts `attributes:`, a map of attribute names to values. Hippy looks each one up in the [IANA IPP registry](https://www.iana.org/assignments/ipp-registrations/) to work out its syntax and which group it goes in, so `copies` and `sides` go in the job attributes and `job-name` in the operation attributes:

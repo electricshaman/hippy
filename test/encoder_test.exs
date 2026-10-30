@@ -95,6 +95,18 @@ defmodule Hippy.EncoderTest do
     end
   end
 
+  test "documents can be an enumerable of binaries" do
+    req = %Hippy.Request{operation_id: 0x02, request_id: 1, data: ["ab", "cd"]}
+
+    stream = Encoder.encode(req)
+    refute is_binary(stream)
+    assert Enum.join(stream) == Encoder.encode(%{req | data: "abcd"})
+
+    assert_raise ArgumentError, ~r/data must be a binary or an Enumerable/, fn ->
+      Encoder.encode(%{req | data: 123})
+    end
+  end
+
   test "requests without a request id are rejected" do
     assert_raise ArgumentError, ~r/request_id is required/, fn ->
       Encoder.encode(%Hippy.Request{operation_id: 0x0B})
