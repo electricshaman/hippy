@@ -15,6 +15,11 @@
 
 ### Added
 
+- Requests can carry other attribute groups: `Hippy.Request` has a `groups` field, an ordered
+  list of `{tag, attributes}` (e.g. `{:printer_attributes, [...]}` for CUPS-Add-Modify-Printer,
+  or one `{:subscription_attributes, [...]}` per subscription), encoded after the operation and
+  job attributes. Every operation accepts a `groups:` option, e.g. a subscription group on
+  Print-Job to be notified about the job.
 - `Hippy.Operation.CupsGetPrinters`, `CupsGetClasses` and `CupsGetDefault`, for listing the
   printers and classes on a CUPS server and getting its default printer. They take the server's
   URI (e.g. `"ipp://localhost:631/"`) and CUPS's filters (`limit:`, `first_printer_name:`,

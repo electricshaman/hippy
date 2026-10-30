@@ -44,6 +44,57 @@ defmodule Hippy.EncoderTest do
            ]
   end
 
+  test "other groups are encoded after operation and job attributes, in order" do
+    # Decoded as a response below, so use an operation id that's also a valid status code.
+    req = %Hippy.Request{
+      operation_id: 0x02,
+      request_id: 1,
+      job_attributes: [{:integer, "copies", 2}],
+      groups: [
+        {:subscription_attributes, [{:keyword, "notify-events", "job-completed"}]},
+        {:printer_attributes, [{:text_without_language, "printer-location", "Lab"}]},
+        {:subscription_attributes, [{:keyword, "notify-events", "printer-stopped"}]}
+      ]
+    }
+
+    res = Hippy.Decoder.decode(Encoder.encode(req))
+
+    assert res.job_attributes == [[{:integer, "copies", 2}]]
+    assert res.printer_attributes == [[{:text_without_language, "printer-location", "Lab"}]]
+
+    assert res.subscription_attributes == [
+             [{:keyword, "notify-events", "job-completed"}],
+             [{:keyword, "notify-events", "printer-stopped"}]
+           ]
+
+    attr = fn tag, name, value ->
+      <<tag, byte_size(name)::16, name::binary, byte_size(value)::16, value::binary>>
+    end
+
+    assert Encoder.encode(req) ==
+             <<1, 1, 0x02::16, 1::32, 0x01>> <>
+               <<0x02>> <>
+               attr.(0x21, "copies", <<2::32>>) <>
+               <<0x06>> <>
+               attr.(0x44, "notify-events", "job-completed") <>
+               <<0x04>> <>
+               attr.(0x41, "printer-location", "Lab") <>
+               <<0x06>> <> attr.(0x44, "notify-events", "printer-stopped") <> <<0x03>>
+  end
+
+  test "invalid groups are rejected" do
+    for group <- [
+          {:operation_attributes, []},
+          {:end_of_attributes, []},
+          {:bogus_attributes, []},
+          :printer_attributes
+        ] do
+      assert_raise ArgumentError, fn ->
+        Encoder.encode(%Hippy.Request{operation_id: 0x0B, request_id: 1, groups: [group]})
+      end
+    end
+  end
+
   test "requests without a request id are rejected" do
     assert_raise ArgumentError, ~r/request_id is required/, fn ->
       Encoder.encode(%Hippy.Request{operation_id: 0x0B})

@@ -15,14 +15,16 @@ defmodule Hippy.Operation.GetPrinterAttributes do
   defstruct printer_uri: nil,
             charset: @def_charset,
             language: @def_lang,
-            operation_attributes: []
+            operation_attributes: [],
+            groups: []
 
   def new(printer_uri, opts \\ []) do
     %__MODULE__{
       printer_uri: printer_uri,
       charset: Keyword.get(opts, :charset, @def_charset),
       language: Keyword.get(opts, :language, @def_lang),
-      operation_attributes: Keyword.get(opts, :operation_attributes, [])
+      operation_attributes: Keyword.get(opts, :operation_attributes, []),
+      groups: Keyword.get(opts, :groups, [])
     }
   end
 end

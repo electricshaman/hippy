@@ -10,7 +10,7 @@ defmodule Hippy.Integration.CupsTest do
 
   import ExUnit.CaptureLog
 
-  alias Hippy.Response
+  alias Hippy.{AttributeGroup, Response}
 
   alias Hippy.Operation.{
     CancelJob,
@@ -33,6 +33,7 @@ defmodule Hippy.Integration.CupsTest do
   @credentials "hippy:hippy-pass"
   @tls [connect_options: [transport_opts: [verify: :verify_none]]]
   @anonymous [req_options: @tls]
+  @admin [req_options: @tls ++ [auth: {:basic, "hippy-admin:admin-pass"}]]
   @user [req_options: @tls ++ [auth: {:basic, @credentials}]]
 
   setup_all do
@@ -149,6 +150,115 @@ defmodule Hippy.Integration.CupsTest do
     test "CUPS-Get-Default returns the default printer", %{http: http} do
       res = send!(CupsGetDefault.new("#{http}/", requested_attributes: ["printer-name"]))
       assert Response.printer(res) == %{"printer-name" => "raw"}
+    end
+  end
+
+  describe "attribute groups in requests" do
+    defp base_attributes,
+      do: [
+        {:charset, "attributes-charset", "utf-8"},
+        {:natural_language, "attributes-natural-language", "en"}
+      ]
+
+    test "CUPS-Add-Modify-Printer creates a queue from a printer group, as an administrator",
+         ctx do
+      name = "created_#{System.unique_integer([:positive])}"
+      on_exit(fn -> docker(["exec", ctx.container, "lpadmin", "-x", name]) end)
+
+      req = %Hippy.Request{
+        operation_id: Hippy.IPP.Operation.cups_add_modify_printer(),
+        operation_attributes:
+          base_attributes() ++ [{:uri, "printer-uri", "ipp://localhost/printers/#{name}"}],
+        groups: [
+          {:printer_attributes,
+           [
+             {:uri, "device-uri", "file:///dev/null"},
+             {:text_without_language, "printer-location", "Front desk"},
+             {:text_without_language, "printer-info", "Made by Hippy"},
+             {:boolean, "printer-is-accepting-jobs", true},
+             {:enum, "printer-state", 3}
+           ]}
+        ]
+      }
+
+      admin = "#{ctx.https}/admin/"
+
+      assert {:error, {:http_error, 401, _}} = Hippy.Server.send_request(req, admin, @anonymous)
+      assert {:ok, %{status_code: :successful_ok}} = Hippy.Server.send_request(req, admin, @admin)
+
+      attrs = Response.printer(send!(GetPrinterAttributes.new(printer(ctx.http, name))))
+      assert attrs["printer-location"] == "Front desk"
+      assert attrs["printer-info"] == "Made by Hippy"
+      assert attrs["printer-is-accepting-jobs"] == true
+      assert attrs["device-uri"] == URI.parse("file:///dev/null")
+    end
+
+    test "Create-Printer-Subscriptions creates one subscription per group", %{http: http} do
+      subscription = fn events ->
+        {:subscription_attributes,
+         [{:keyword, "notify-pull-method", "ippget"}, {:keyword, "notify-events", events}]}
+      end
+
+      uri = printer(http, "raw")
+
+      req = %Hippy.Request{
+        operation_id: Hippy.IPP.Operation.create_printer_subscription(),
+        operation_attributes:
+          base_attributes() ++ [{:uri, "printer-uri", String.replace(uri, "http", "ipp")}],
+        groups: [subscription.(["printer-state-changed"]), subscription.(["job-completed"])]
+      }
+
+      {:ok, res} = Hippy.Server.send_request(req, uri)
+      assert res.status_code == :successful_ok
+
+      ids =
+        Enum.map(
+          res.subscription_attributes,
+          &AttributeGroup.to_map(&1)["notify-subscription-id"]
+        )
+
+      assert length(ids) == 2 and Enum.all?(ids, &is_integer/1)
+
+      # Each subscription got its own group's events.
+      list = %Hippy.Request{
+        operation_id: Hippy.IPP.Operation.get_subscriptions(),
+        operation_attributes:
+          base_attributes() ++
+            [
+              {:uri, "printer-uri", String.replace(uri, "http", "ipp")},
+              {{:set1, :keyword}, "requested-attributes",
+               ["notify-subscription-id", "notify-events"]}
+            ]
+      }
+
+      {:ok, res} = Hippy.Server.send_request(list, uri)
+
+      events =
+        Map.new(res.subscription_attributes, fn group ->
+          map = AttributeGroup.to_map(group)
+          {map["notify-subscription-id"], map["notify-events"]}
+        end)
+
+      assert events[Enum.at(ids, 0)] == "printer-state-changed"
+      assert events[Enum.at(ids, 1)] == "job-completed"
+    end
+
+    test "Print-Job with a subscription group subscribes to the job", %{http: http} do
+      op =
+        PrintJob.new(printer(http, "raw"), pdf(),
+          groups: [
+            {:subscription_attributes,
+             [
+               {:keyword, "notify-pull-method", "ippget"},
+               {:keyword, "notify-events", "job-completed"}
+             ]}
+          ]
+        )
+
+      res = send!(op)
+      assert res.status_code == :successful_ok
+      assert [[{:integer, "notify-subscription-id", id}]] = res.subscription_attributes
+      assert is_integer(id)
     end
   end
 

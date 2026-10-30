@@ -147,6 +147,17 @@ Hippy.Operation.PrintJob.new(printer_uri, doc,
 |> Hippy.send_operation()
 ```
 
+Other attribute groups go in `groups:`, as `{tag, attributes}`. For example, to be notified when the job completes:
+
+```elixir
+Hippy.Operation.PrintJob.new(printer_uri, doc,
+  groups: [
+    {:subscription_attributes,
+     [{:keyword, "notify-pull-method", "ippget"}, {:keyword, "notify-events", "job-completed"}]}
+  ]
+)
+```
+
 ### Get recently completed jobs
 ```elixir
 Hippy.Operation.GetJobs.new("http://localhost:631/printers/HP_Color_LaserJet")
