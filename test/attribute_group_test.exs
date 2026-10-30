@@ -1441,6 +1441,39 @@ defmodule Hippy.AttributeGroupTest do
            }
   end
 
+  test "collection members the registry defines as sets are lists too" do
+    folding = {:collection, nil, %{"folding-direction" => {:keyword, nil, "inward"}}}
+
+    punching =
+      {:collection, nil, %{"punching-locations" => {:integer, nil, 2000}}}
+
+    finishings = %{
+      "finishing-template" => {:keyword, nil, "fold"},
+      "folding" => folding,
+      "punching" => punching
+    }
+
+    assert Hippy.AttributeGroup.to_map([
+             {:collection, "finishings-col", finishings},
+             {:collection, "finishings-col-ready", %{"punching" => punching}},
+             {:collection, "x-vendor-col", %{"folding" => folding}}
+           ]) == %{
+             # finishings-col is a set, and so are its folding and the punching-locations in
+             # punching. finishing-template and folding-direction aren't.
+             "finishings-col" => [
+               %{
+                 "finishing-template" => "fold",
+                 "folding" => [%{"folding-direction" => "inward"}],
+                 "punching" => %{"punching-locations" => [2000]}
+               }
+             ],
+             # finishings-col-ready has the same members as finishings-col.
+             "finishings-col-ready" => [%{"punching" => %{"punching-locations" => [2000]}}],
+             # Members of attributes the registry doesn't know are left as they are.
+             "x-vendor-col" => %{"folding" => %{"folding-direction" => "inward"}}
+           }
+  end
+
   test "to_map with an out-of-range index returns an error" do
     assert Hippy.AttributeGroup.to_map([[{:integer, "job-id", 1}]], 5) ==
              {:error, :bad_attribute_group}
