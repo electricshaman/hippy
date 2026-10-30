@@ -26,6 +26,13 @@
 
 ### Added
 
+- Every operation accepts `attributes:`, a map of attribute names to values, e.g.
+  `%{"copies" => 2, "media-col" => %{"media-size" => %{...}}}`. Each attribute's syntax and
+  group are worked out from the IANA registry and the operation (`Hippy.AttributeInference`):
+  maps are collections, lists are sets, enums take atoms such as `:landscape`, and
+  `{syntax, value}` gives the syntax explicitly. Explicit `operation_attributes:`,
+  `job_attributes:` and `groups:` override them.
+- `Hippy.IPP.Enum.encode/2` encodes an enum value by attribute name.
 - `Hippy.IPP.Attributes` describes every attribute in the IANA IPP registry: its value types
   (with ranges and length limits), whether it can have several values, the groups it belongs
   to, whether it's deprecated or obsolete, and, for collections, its members.

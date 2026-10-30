@@ -18,7 +18,8 @@ defmodule Hippy.Operation.CancelJob do
             charset: @def_charset,
             language: @def_lang,
             operation_attributes: [],
-            groups: []
+            groups: [],
+            attributes: %{}
 
   def new(printer_uri, job_id, opts \\ []) do
     %__MODULE__{
@@ -27,7 +28,8 @@ defmodule Hippy.Operation.CancelJob do
       charset: Keyword.get(opts, :charset, @def_charset),
       language: Keyword.get(opts, :language, @def_lang),
       operation_attributes: Keyword.get(opts, :operation_attributes, []),
-      groups: Keyword.get(opts, :groups, [])
+      groups: Keyword.get(opts, :groups, []),
+      attributes: Keyword.get(opts, :attributes, %{})
     }
   end
 end

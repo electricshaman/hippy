@@ -228,6 +228,35 @@ defmodule Hippy.Integration.CupsTest do
       assert attrs["device-uri"] == URI.parse("file:///dev/null")
     end
 
+    test "inferred printer attributes create a queue with CUPS-Add-Modify-Printer", ctx do
+      name = "inferred_#{System.unique_integer([:positive])}"
+      on_exit(fn -> docker(["exec", ctx.container, "lpadmin", "-x", name]) end)
+
+      # The operation decides where printer-location goes: here, the printer group.
+      op = %{
+        charset: "utf-8",
+        language: "en",
+        printer_uri: "ipp://localhost/printers/#{name}",
+        attributes: %{
+          # CUPS's own attribute, so it needs its syntax.
+          "device-uri" => {:uri, "file:///dev/null"},
+          "printer-location" => "Back office",
+          "printer-info" => "Inferred by Hippy"
+        }
+      }
+
+      req = Hippy.Request.new(Hippy.IPP.Operation.cups_add_modify_printer(), op)
+      assert [{:printer_attributes, _}] = req.groups
+
+      assert {:ok, %{status_code: :successful_ok}} =
+               Hippy.Server.send_request(req, "#{ctx.https}/admin/", @admin)
+
+      attrs = Response.printer(send!(GetPrinterAttributes.new(printer(ctx.http, name))))
+      assert attrs["printer-location"] == "Back office"
+      assert attrs["printer-info"] == "Inferred by Hippy"
+      assert attrs["device-uri"] == URI.parse("file:///dev/null")
+    end
+
     test "Create-Printer-Subscriptions creates one subscription per group", %{http: http} do
       subscription = fn events ->
         {:subscription_attributes,
@@ -350,6 +379,38 @@ defmodule Hippy.Integration.CupsTest do
       assert options =~ "media=A4"
       assert options =~ "sides=two-sided-long-edge"
       assert options =~ "orientation-requested=4"
+    end
+
+    test "attributes given as plain names and values", ctx do
+      uri = printer(ctx.http, "filtered")
+      a4 = %{"x-dimension" => 21000, "y-dimension" => 29700}
+
+      op =
+        PrintJob.new(uri, pdf(),
+          attributes: %{
+            "job-name" => "Inferred",
+            "document-format" => "application/pdf",
+            "copies" => 2,
+            "sides" => "two-sided-long-edge",
+            "media-col" => %{"media-size" => a4},
+            "orientation-requested" => :landscape
+          }
+        )
+
+      id = print!(op)
+      assert wait_for_state(uri, id) == :completed
+
+      attrs = job_attributes!(uri, id)
+      assert attrs["job-name"] == "Inferred"
+      assert attrs["document-format"] == "application/pdf"
+      assert attrs["copies"] == 2
+      assert attrs["sides"] == "two-sided-long-edge"
+      assert attrs["orientation-requested"] == :landscape
+
+      log = container_exec(ctx.container, ["cat", "/var/log/cups/error_log"])
+      [options] = Regex.run(~r/\[Job #{id}\] argv\[5\]="([^"]*)"/, log, capture: :all_but_first)
+      assert options =~ "media=A4"
+      assert options =~ "sides=two-sided-long-edge"
     end
 
     test "unsupported document format is reported", %{http: http} do
