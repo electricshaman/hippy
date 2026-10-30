@@ -4,7 +4,8 @@ defmodule Hippy.Server do
   @doc """
   Sends an operation to a printer and decodes the response.
 
-  The request is sent to the operation's `printer_uri` (`ipp` and `ipps` are sent over `http`
+  The request is sent to the operation's `printer_uri`, or `server_uri` for operations addressed
+  to the server such as `Hippy.Operation.CupsGetPrinters` (`ipp` and `ipps` are sent over `http`
   and `https`).
 
   ## Options
@@ -54,9 +55,13 @@ defmodule Hippy.Server do
     case Keyword.fetch(opts, :endpoint) do
       {:ok, nil} -> {:error, :printer_uri_required}
       {:ok, endpoint} -> {:ok, endpoint}
-      :error -> format_endpoint(op.printer_uri)
+      :error -> format_endpoint(target_uri(op))
     end
   end
+
+  # Most operations are sent to a printer. Some, such as CUPS-Get-Printers, are sent to the
+  # server itself.
+  defp target_uri(op), do: Map.get(op, :printer_uri) || Map.get(op, :server_uri)
 
   def format_endpoint(printer_uri) when is_nil(printer_uri) do
     {:error, :printer_uri_required}

@@ -23,5 +23,9 @@ for q in held_jobs held_cancel; do
   lpadmin -p "$q" -E -v file:///dev/null -m raw && cupsdisable "$q"
 done
 
+# A class containing two of the queues, and a default destination.
+lpadmin -p raw -c raw_class && lpadmin -p filtered -c raw_class && cupsenable raw_class && cupsaccept raw_class
+lpadmin -d raw
+
 echo READY
 wait
