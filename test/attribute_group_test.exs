@@ -664,7 +664,7 @@ defmodule Hippy.AttributeGroupTest do
              "printer-info" => "HP Color LaserJet MFP M477fdw",
              "printer-make-and-model" => "HP Color LaserJet MFP M477fdw",
              "printer-state" => :idle,
-             "printer-state-reasons" => "wifi-not-configured-report",
+             "printer-state-reasons" => ["wifi-not-configured-report"],
              "printer-state-message" => "",
              "printer-state-change-time" => 0,
              "printer-state-change-date-time" =>
@@ -674,7 +674,7 @@ defmodule Hippy.AttributeGroupTest do
                "1.1",
                "2.0"
              ],
-             "ipp-features-supported" => "airprint-1.4",
+             "ipp-features-supported" => ["airprint-1.4"],
              "operations-supported" => [
                :print_job,
                :print_uri,
@@ -697,7 +697,7 @@ defmodule Hippy.AttributeGroupTest do
                "us-ascii"
              ],
              "natural-language-configured" => "en",
-             "generated-natural-language-supported" => "en",
+             "generated-natural-language-supported" => ["en"],
              "document-format-default" => "application/pdf",
              "document-format-supported" => [
                "image/urf",
@@ -717,7 +717,7 @@ defmodule Hippy.AttributeGroupTest do
              "queued-job-count" => 0,
              "pdl-override-supported" => "attempted",
              "printer-up-time" => 31337,
-             "compression-supported" => "none",
+             "compression-supported" => ["none"],
              "color-supported" => true,
              "page-ranges-supported" => true,
              "job-creation-attributes-supported" => [
@@ -893,24 +893,26 @@ defmodule Hippy.AttributeGroupTest do
                "media-top-margin" => 423,
                "media-type" => "stationery"
              },
-             "media-ready" => "na_letter_8.5x11in",
-             "media-col-ready" => %{
-               "duplex-supported" => 1,
-               "media-bottom-margin" => 423,
-               "media-left-margin" => 423,
-               "media-right-margin" => 423,
-               "media-size" => %{
-                 "x-dimension" => 21590,
-                 "y-dimension" => 27940
-               },
-               "media-source" => "tray-2",
-               "media-top-margin" => 423,
-               "media-type" => "stationery"
-             },
-             "media-left-margin-supported" => 423,
-             "media-right-margin-supported" => 423,
-             "media-top-margin-supported" => 423,
-             "media-bottom-margin-supported" => 423,
+             "media-ready" => ["na_letter_8.5x11in"],
+             "media-col-ready" => [
+               %{
+                 "duplex-supported" => 1,
+                 "media-bottom-margin" => 423,
+                 "media-left-margin" => 423,
+                 "media-right-margin" => 423,
+                 "media-size" => %{
+                   "x-dimension" => 21590,
+                   "y-dimension" => 27940
+                 },
+                 "media-source" => "tray-2",
+                 "media-top-margin" => 423,
+                 "media-type" => "stationery"
+               }
+             ],
+             "media-left-margin-supported" => [423],
+             "media-right-margin-supported" => [423],
+             "media-top-margin-supported" => [423],
+             "media-bottom-margin-supported" => [423],
              "media-source-supported" => [
                "auto",
                "manual",
@@ -958,82 +960,86 @@ defmodule Hippy.AttributeGroupTest do
                "heavyRough",
                "photographic-film"
              ],
-             "job-constraints-supported" => %{
-               "media-col" => %{
-                 "media-size" => [
-                   %{
-                     "x-dimension" => 16200,
-                     "y-dimension" => 22900
-                   },
-                   %{
-                     "x-dimension" => 9842,
-                     "y-dimension" => 19050
-                   },
-                   %{
-                     "x-dimension" => 14800,
-                     "y-dimension" => 20000
-                   },
-                   %{
-                     "x-dimension" => 10000,
-                     "y-dimension" => 15000
-                   },
-                   %{
-                     "x-dimension" => 10500,
-                     "y-dimension" => 14800
-                   },
-                   %{
-                     "x-dimension" => 12700,
-                     "y-dimension" => 20320
-                   },
-                   %{
-                     "x-dimension" => 10160,
-                     "y-dimension" => 15240
-                   },
-                   %{
-                     "x-dimension" => 14800,
-                     "y-dimension" => 21000
-                   },
-                   %{
-                     "x-dimension" => 12800,
-                     "y-dimension" => 18200
-                   },
-                   %{
-                     "x-dimension" => 10000,
-                     "y-dimension" => 14800
-                   },
-                   %{
-                     "x-dimension" => 10477,
-                     "y-dimension" => 24130
-                   },
-                   %{
-                     "x-dimension" => 17600,
-                     "y-dimension" => 25000
-                   },
-                   %{
-                     "x-dimension" => 11000,
-                     "y-dimension" => 22000
-                   }
-                 ],
-                 "media-type" => [
-                   "envelope-heavyweight",
-                   "labels",
-                   "cardstock",
-                   "HPCover",
-                   "transparency",
-                   "envelope",
-                   "photographic-film"
+             "job-constraints-supported" => [
+               %{
+                 "media-col" => %{
+                   "media-size" => [
+                     %{
+                       "x-dimension" => 16200,
+                       "y-dimension" => 22900
+                     },
+                     %{
+                       "x-dimension" => 9842,
+                       "y-dimension" => 19050
+                     },
+                     %{
+                       "x-dimension" => 14800,
+                       "y-dimension" => 20000
+                     },
+                     %{
+                       "x-dimension" => 10000,
+                       "y-dimension" => 15000
+                     },
+                     %{
+                       "x-dimension" => 10500,
+                       "y-dimension" => 14800
+                     },
+                     %{
+                       "x-dimension" => 12700,
+                       "y-dimension" => 20320
+                     },
+                     %{
+                       "x-dimension" => 10160,
+                       "y-dimension" => 15240
+                     },
+                     %{
+                       "x-dimension" => 14800,
+                       "y-dimension" => 21000
+                     },
+                     %{
+                       "x-dimension" => 12800,
+                       "y-dimension" => 18200
+                     },
+                     %{
+                       "x-dimension" => 10000,
+                       "y-dimension" => 14800
+                     },
+                     %{
+                       "x-dimension" => 10477,
+                       "y-dimension" => 24130
+                     },
+                     %{
+                       "x-dimension" => 17600,
+                       "y-dimension" => 25000
+                     },
+                     %{
+                       "x-dimension" => 11000,
+                       "y-dimension" => 22000
+                     }
+                   ],
+                   "media-type" => [
+                     "envelope-heavyweight",
+                     "labels",
+                     "cardstock",
+                     "HPCover",
+                     "transparency",
+                     "envelope",
+                     "photographic-film"
+                   ]
+                 },
+                 "resolver-name" => "duplex-unsupported-media",
+                 "sides" => [
+                   "two-sided-short-edge",
+                   "two-sided-long-edge"
                  ]
-               },
-               "resolver-name" => "duplex-unsupported-media",
-               "sides" => [
-                 "two-sided-short-edge",
-                 "two-sided-long-edge"
-               ]
-             },
-             "job-resolvers-supported" => %{
-               "resolver-name" => "duplex-unsupported-media",
-               "sides" => "one-sided"
-             },
+               }
+             ],
+             "job-resolvers-supported" => [
+               %{
+                 "resolver-name" => "duplex-unsupported-media",
+                 "sides" => "one-sided"
+               }
+             ],
              "pages-per-minute" => 28,
              "pages-per-minute-color" => 28,
              "jpeg-k-octets-supported" => 0..11719,
@@ -1098,7 +1104,7 @@ defmodule Hippy.AttributeGroupTest do
              "marker-levels" => [93, 93, 93, 95],
              "copies-default" => 1,
              "multiple-document-handling-default" => "single-document",
-             "finishings-default" => :none,
+             "finishings-default" => [:none],
              "orientation-requested-default" => :portrait,
              "print-quality-default" => :normal,
              "printer-resolution-default" => PrintResolution.new(600, 600, :dpi),
@@ -1112,7 +1118,7 @@ defmodule Hippy.AttributeGroupTest do
                "separate-documents-collated-copies",
                "single-document-new-sheet"
              ],
-             "finishings-supported" => :none,
+             "finishings-supported" => [:none],
              "orientation-requested-supported" => [
                :portrait,
                :landscape,
@@ -1121,13 +1127,14 @@ defmodule Hippy.AttributeGroupTest do
                :none
              ],
              "print-quality-supported" => [:normal, :draft],
-             "printer-resolution-supported" => PrintResolution.new(600, 600, :dpi),
+             "printer-resolution-supported" => [PrintResolution.new(600, 600, :dpi)],
              "sides-supported" => ["one-sided", "two-sided-short-edge", "two-sided-long-edge"],
              "job-impressions-supported" => 1..99999,
              "job-media-sheets-supported" => 1..99999,
-             "output-bin-supported" => "face-down",
-             "printer-output-tray" =>
-               "type=unRemovableBin;maxcapacity=125;remaining=-3;status=0;name=face-down;stackingorder=firstToLast;pagedelivery=faceDown;",
+             "output-bin-supported" => ["face-down"],
+             "printer-output-tray" => [
+               "type=unRemovableBin;maxcapacity=125;remaining=-3;status=0;name=face-down;stackingorder=firstToLast;pagedelivery=faceDown;"
+             ],
              "output-mode-supported" => ["auto", "auto-monochrome", "monochrome", "color"],
              "printer-icons" => [
                %URI{
@@ -1172,8 +1179,8 @@ defmodule Hippy.AttributeGroupTest do
              "landscape-orientation-requested-preferred" => :reverse_landscape,
              "printer-wifi-ssid" => "",
              "printer-wifi-state" => 3,
-             "identify-actions-default" => "display",
-             "identify-actions-supported" => "display",
+             "identify-actions-default" => ["display"],
+             "identify-actions-supported" => ["display"],
              "print-scaling-default" => "auto",
              "print-scaling-supported" => [
                "auto",
@@ -1182,16 +1189,16 @@ defmodule Hippy.AttributeGroupTest do
                "fit",
                "none"
              ],
-             "printer-firmware-name" => "20160921",
-             "printer-firmware-string-version" => "20160921",
-             "printer-firmware-version" => "20160921",
+             "printer-firmware-name" => ["20160921"],
+             "printer-firmware-string-version" => ["20160921"],
+             "printer-firmware-version" => ["20160921"],
              "which-jobs-supported" => [
                "completed",
                "not-completed"
              ],
-             "printer-organization" => "",
-             "printer-organizational-unit" => "",
-             "printer-get-attributes-supported" => "document-format",
+             "printer-organization" => [""],
+             "printer-organizational-unit" => [""],
+             "printer-get-attributes-supported" => ["document-format"],
              "printer-config-change-time" => 0,
              "printer-config-change-date-time" =>
                {:error, {:invalid_format, {1, 1, 1, 1, 1, 1, 1, "+", 1, 1}}},
@@ -1203,7 +1210,7 @@ defmodule Hippy.AttributeGroupTest do
              ],
              "pclm-raster-back-side" => "normal",
              "pclm-compression-method-preferred" => "flate",
-             "pclm-source-resolution-supported" => PrintResolution.new(600, 600, :dpi),
+             "pclm-source-resolution-supported" => [PrintResolution.new(600, 600, :dpi)],
              "pclm-strip-height-preferred" => 64,
              "pclm-strip-height-supported" => [16, 32, 64, 128],
              "pdf-fit-to-page-default" => false,
@@ -1404,13 +1411,33 @@ defmodule Hippy.AttributeGroupTest do
              "time-at-processing" => 1_523_226_391,
              "job-id" => 59,
              "job-state" => :completed,
-             "job-state-reasons" => "processing-to-stop-point",
+             "job-state-reasons" => ["processing-to-stop-point"],
              "job-impressions-completed" => 5,
              "job-media-sheets-completed" => 5,
              "job-k-octets" => 73,
              "job-hold-until" => "no-hold",
              "job-printer-state-message" => "",
              "job-printer-state-reasons" => "none"
+           }
+  end
+
+  test "registered set attributes are always lists" do
+    media = %{"media-size" => {:collection, nil, %{"x-dimension" => {:integer, nil, 21000}}}}
+
+    assert Hippy.AttributeGroup.to_map([
+             {:keyword, "job-state-reasons", "none"},
+             {:keyword, "printer-state-reasons", ["media-low", "toner-low"]},
+             {:collection, "media-col-ready", media},
+             {:integer, "copies", 1},
+             {:keyword, "x-vendor-reasons", "none"},
+             {:no_value, "printer-alert", :no_value}
+           ]) == %{
+             "job-state-reasons" => ["none"],
+             "printer-state-reasons" => ["media-low", "toner-low"],
+             "media-col-ready" => [%{"media-size" => %{"x-dimension" => 21000}}],
+             "copies" => 1,
+             "x-vendor-reasons" => "none",
+             "printer-alert" => :no_value
            }
   end
 

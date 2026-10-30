@@ -227,7 +227,7 @@ Hippy.Response.job(res)
   "job-id" => 47,
   "job-state" => :pending,
   "job-state-message" => "",
-  "job-state-reasons" => "none",
+  "job-state-reasons" => ["none"],
   "job-uri" => %URI{scheme: "ipp", host: "localhost", port: 631, path: "/jobs/47", ...}
 }
 
@@ -241,7 +241,7 @@ Hippy.Response.job(res)["job-id"]
 - `Hippy.Response.printers/1`: a map per printer, for CUPS-Get-Printers.
 - `Hippy.Response.operation/1` and `Hippy.Response.unsupported/1`: operation attributes (such as `status-message`) and attributes the printer didn't support.
 
-Attributes with several values are lists. `Hippy.AttributeGroup.to_map/1` converts any list of attribute tuples the same way.
+Attributes the IANA registry defines as sets, such as `job-state-reasons`, are always lists, even with one value. Other attributes are a single value, or a list if a printer sends several anyway. `Hippy.AttributeGroup.to_map/1` converts any list of attribute tuples the same way.
 
 ## Development
 

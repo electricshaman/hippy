@@ -274,8 +274,8 @@ defmodule Hippy.Integration.CupsTest do
           {map["notify-subscription-id"], map["notify-events"]}
         end)
 
-      assert events[Enum.at(ids, 0)] == "printer-state-changed"
-      assert events[Enum.at(ids, 1)] == "job-completed"
+      assert events[Enum.at(ids, 0)] == ["printer-state-changed"]
+      assert events[Enum.at(ids, 1)] == ["job-completed"]
     end
 
     test "Print-Job with a subscription group subscribes to the job", %{http: http} do

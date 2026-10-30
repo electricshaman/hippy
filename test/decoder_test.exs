@@ -129,7 +129,8 @@ defmodule Hippy.DecoderTest do
       assert Hippy.AttributeGroup.to_map(res.job_attributes, 0)["job-state-reasons"] ==
                ["job-incoming", "job-hold-until-specified"]
 
-      assert Hippy.AttributeGroup.to_map(res.job_attributes, 1)["job-state-reasons"] == "none"
+      # job-state-reasons is a set, so it's a list even with one value.
+      assert Hippy.AttributeGroup.to_map(res.job_attributes, 1)["job-state-reasons"] == ["none"]
     end
 
     test "keep repeated values and values of different syntaxes" do
