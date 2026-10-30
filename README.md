@@ -253,7 +253,7 @@ Integration tests run Hippy against a real CUPS server in a throwaway Docker con
 mix test --only cups
 ```
 
-The enum values in `Hippy.IPP` are checked against a copy of the [IANA IPP registry](https://www.iana.org/assignments/ipp-registrations/) in `test/fixtures/ipp_registry.json`. To pick up new registrations, refresh it and run the tests to see what's missing:
+`Hippy.IPP.Attributes` is generated from the [IANA IPP registry](https://www.iana.org/assignments/ipp-registrations/) into `lib/ipp/attributes.eterm`, and the enum values in `Hippy.IPP` are checked against a copy of it in `test/fixtures/ipp_registry.json`. To pick up new registrations, regenerate both and run the tests to see what's missing:
 
 ```
 mix run scripts/update_ipp_registry.exs

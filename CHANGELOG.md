@@ -19,6 +19,9 @@
 
 ### Added
 
+- `Hippy.IPP.Attributes` describes every attribute in the IANA IPP registry: its value types
+  (with ranges and length limits), whether it can have several values, the groups it belongs
+  to, whether it's deprecated or obsolete, and, for collections, its members.
 - `raw: true` on `Hippy.Decoder.decode/2`, `Hippy.send_operation/2` and
   `Hippy.Server.send_request/3` returns the response exactly as it was sent: one tuple per
   value, values as on the wire (enums and the status code as integers, URIs as strings, dates as
