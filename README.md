@@ -164,6 +164,29 @@ Hippy.Operation.PrintJob.new(printer_uri, doc,
 )
 ```
 
+### Send any operation
+
+`Hippy.request/4` sends any IPP or CUPS operation by name (see `Hippy.IPP.Operation`), with attributes as a map. A job URI is sent as the job the operation is about, and CUPS's server-wide operations go to the server:
+
+```elixir
+Hippy.request(printer_uri, :validate_job, %{"document-format" => "application/pdf", "copies" => 2})
+
+Hippy.request("ipp://localhost:631/jobs/47", :hold_job, %{}, req_options: [auth: {:basic, "user:pass"}])
+
+Hippy.request("ipp://localhost:631/", :cups_get_printers, %{"limit" => 10})
+
+# Administration is sent to /admin/, about a printer.
+Hippy.request("ipps://localhost:631/printers/front_desk", :cups_add_modify_printer,
+  %{
+    "printer-uri" => "ipp://localhost/printers/front_desk",
+    "device-uri" => {:uri, "socket://10.0.0.5"},
+    "printer-info" => "Front desk"
+  },
+  endpoint: "https://localhost:631/admin/",
+  req_options: [auth: {:basic, "admin:pass"}]
+)
+```
+
 ### Get recently completed jobs
 ```elixir
 Hippy.Operation.GetJobs.new("http://localhost:631/printers/HP_Color_LaserJet")

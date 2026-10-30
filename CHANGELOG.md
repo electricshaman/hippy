@@ -26,6 +26,10 @@
 
 ### Added
 
+- `Hippy.request/4` sends any operation, by name or id, with attributes as a map, e.g.
+  `Hippy.request(uri, :validate_job, %{"copies" => 2})`. A job URI is sent as `job-uri`, CUPS's
+  server-wide operations have no `printer-uri`, and `target:` overrides either. It takes
+  `document:` and the same options as `send_operation/2`.
 - Every operation accepts `attributes:`, a map of attribute names to values, e.g.
   `%{"copies" => 2, "media-col" => %{"media-size" => %{...}}}`. Each attribute's syntax and
   group are worked out from the IANA registry and the operation (`Hippy.AttributeInference`):
