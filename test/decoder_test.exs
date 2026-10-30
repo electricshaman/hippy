@@ -31,6 +31,14 @@ defmodule Hippy.DecoderTest do
     assert length(res.job_attributes) > 0
   end
 
+  test "status codes Hippy doesn't know are kept as integers" do
+    res = Decoder.decode(<<1, 1, 0x0499::16, 0, 0, 0, 1, 0x01, 0x03>>)
+    assert res.status_code == 0x0499
+
+    res = Decoder.decode(<<1, 1, 0x0406::16, 0, 0, 0, 1, 0x01, 0x03>>)
+    assert res.status_code == :client_error_not_found
+  end
+
   test "decodes unsupported attributes group" do
     res = Decoder.decode(response(<<0x05>> <> keyword("foo", "bar")))
     assert res.unsupported_attributes == [{:keyword, "foo", "bar"}]
@@ -250,13 +258,13 @@ defmodule Hippy.DecoderTest do
                {:delete_attribute, "job-hold-until", :delete_attribute},
                {:admin_define, "media", :admin_define},
                {:no_value, "x", :no_value},
-               {:out_of_band, "y", :out_of_band}
+               {0x1F, "y", ""}
              ]
     end
 
-    test "syntaxes reserved for future use are kept as raw bytes" do
+    test "value tags Hippy doesn't know keep their tag and bytes" do
       res = Decoder.decode(response(<<0x04, 0x60, 1::16, "x", 2::16, 1, 2>>))
-      assert printer(res) == [{:octet_string, "x", <<1, 2>>}]
+      assert printer(res) == [{0x60, "x", <<1, 2>>}]
     end
   end
 end
