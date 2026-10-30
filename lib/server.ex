@@ -33,6 +33,70 @@ defmodule Hippy.Server do
     end
   end
 
+  # CUPS operations addressed to the server as a whole, which take no printer-uri.
+  @server_operations [
+    :cups_get_default,
+    :cups_get_printers,
+    :cups_get_classes,
+    :cups_get_devices,
+    :cups_get_ppds
+  ]
+
+  @doc """
+  Sends any operation, by name or id, with attributes given as a map. See `Hippy.request/4`.
+  """
+  def request(uri, operation, attributes \\ %{}, opts \\ []) do
+    with {:ok, operation_id, name} <- operation_id(operation),
+         {:ok, endpoint} <- endpoint(%{printer_uri: uri}, opts) do
+      op =
+        %{
+          charset: Keyword.get(opts, :charset, "utf-8"),
+          language: Keyword.get(opts, :language, "en"),
+          attributes: attributes,
+          operation_attributes: Keyword.get(opts, :operation_attributes, []),
+          job_attributes: Keyword.get(opts, :job_attributes, []),
+          groups: Keyword.get(opts, :groups, [])
+        }
+        |> put_target(uri, Keyword.get_lazy(opts, :target, fn -> target(uri, name) end))
+
+      operation_id
+      |> Hippy.Request.new(op, [], data: Keyword.get(opts, :document, <<>>))
+      |> send_request(endpoint, opts)
+    end
+  end
+
+  defp operation_id(id) when is_integer(id) do
+    case Hippy.IPP.Operation.decode(id) do
+      {:ok, name} -> {:ok, id, name}
+      {:error, _} -> {:ok, id, nil}
+    end
+  end
+
+  defp operation_id(name) when is_atom(name) do
+    case Hippy.IPP.Operation.encode(name) do
+      {:ok, id} -> {:ok, id, name}
+      {:error, _} -> {:error, {:unknown_operation, name}}
+    end
+  end
+
+  defp target(uri, name) do
+    cond do
+      name in @server_operations -> :server
+      URI.parse(uri).path =~ ~r{/jobs/\d+/?$} -> :job
+      true -> :printer
+    end
+  end
+
+  # The printer-uri (or job-uri) attribute that says what the operation is about.
+  defp put_target(op, uri, :printer), do: Map.put(op, :printer_uri, uri)
+
+  defp put_target(op, uri, :job) do
+    job_uri = {:uri, "job-uri", String.replace(uri, ~r/^http/, "ipp")}
+    Map.update!(op, :operation_attributes, &[job_uri | &1])
+  end
+
+  defp put_target(op, _uri, :server), do: op
+
   @doc """
   Sends a request to an endpoint URL and decodes the response.
 

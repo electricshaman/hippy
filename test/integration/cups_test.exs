@@ -326,6 +326,114 @@ defmodule Hippy.Integration.CupsTest do
     end
   end
 
+  describe "Hippy.request" do
+    test "Validate-Job checks attributes without printing", %{http: http} do
+      uri = printer(http, "raw")
+
+      {:ok, res} =
+        Hippy.request(uri, :validate_job, %{"document-format" => "application/pdf", "copies" => 2})
+
+      assert res.status_code == :successful_ok
+
+      {:ok, res} = Hippy.request(uri, :validate_job, %{"document-format" => "application/x-nope"})
+      assert res.status_code == :client_error_document_format_not_supported
+    end
+
+    test "Print-Job, then job operations by job URI, as the job's owner", %{https: https} do
+      {:ok, res} =
+        Hippy.request(
+          printer(https, "held_cancel"),
+          :print_job,
+          %{"job-name" => "By request"},
+          [document: pdf()] ++ @user
+        )
+
+      assert res.status_code == :successful_ok
+
+      # CUPS's job-uri names its own host, so address the job through the test's port.
+      job_uri = "#{https}/jobs/#{Response.job(res)["job-id"]}"
+
+      state = fn ->
+        {:ok, res} = Hippy.request(job_uri, :get_job_attributes, %{}, @user)
+        Response.job(res)["job-state"]
+      end
+
+      assert state.() == :pending
+
+      {:ok, res} = Hippy.request(job_uri, :hold_job, %{}, @user)
+      assert res.status_code == :successful_ok
+      assert state.() == :pending_held
+
+      {:ok, res} = Hippy.request(job_uri, :release_job, %{}, @user)
+      assert res.status_code == :successful_ok
+      assert state.() == :pending
+
+      {:ok, res} = Hippy.request(job_uri, :cancel_job, %{}, @user)
+      assert res.status_code == :successful_ok
+      assert state.() == :canceled
+    end
+
+    test "CUPS server operations", %{http: http} do
+      {:ok, res} =
+        Hippy.request("#{http}/", :cups_get_printers, %{
+          "requested-attributes" => ["printer-name"]
+        })
+
+      assert "raw" in Enum.map(Response.printers(res), & &1["printer-name"])
+
+      {:ok, res} =
+        Hippy.request("#{http}/", :cups_get_default, %{"requested-attributes" => ["printer-name"]})
+
+      assert Response.printer(res)["printer-name"] == "raw"
+    end
+
+    test "administration: add, pause, resume and delete a printer", ctx do
+      name = "requested_#{System.unique_integer([:positive])}"
+      on_exit(fn -> docker(["exec", ctx.container, "lpadmin", "-x", name]) end)
+
+      admin = [endpoint: "#{ctx.https}/admin/"] ++ @admin
+      printer_uri = "ipp://localhost/printers/#{name}"
+      queue = printer(ctx.https, name)
+
+      printer_state = fn ->
+        Response.printer(send!(GetPrinterAttributes.new(printer(ctx.http, name))))[
+          "printer-state"
+        ]
+      end
+
+      {:ok, res} =
+        Hippy.request(
+          queue,
+          :cups_add_modify_printer,
+          %{
+            "printer-uri" => printer_uri,
+            "device-uri" => {:uri, "file:///dev/null"},
+            "printer-info" => "Made by Hippy.request"
+          },
+          admin
+        )
+
+      assert res.status_code == :successful_ok
+
+      assert Response.printer(send!(GetPrinterAttributes.new(printer(ctx.http, name))))[
+               "printer-info"
+             ] ==
+               "Made by Hippy.request"
+
+      {:ok, %{status_code: :successful_ok}} = Hippy.request(queue, :pause_printer, %{}, @admin)
+      assert printer_state.() == :stopped
+
+      {:ok, %{status_code: :successful_ok}} = Hippy.request(queue, :resume_printer, %{}, @admin)
+      assert printer_state.() == :idle
+
+      {:ok, %{status_code: :successful_ok}} =
+        Hippy.request(queue, :cups_delete_printer, %{"printer-uri" => printer_uri}, admin)
+
+      assert send!(GetPrinterAttributes.new(printer(ctx.http, name))).status_code ==
+               :client_error_not_found
+    end
+  end
+
   describe "Print-Job" do
     test "PDF goes through the filter pipeline with job attributes applied", ctx do
       uri = printer(ctx.http, "filtered")
