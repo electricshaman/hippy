@@ -100,6 +100,23 @@ defmodule Hippy.IPP.Enum do
     end
   end
 
+  @doc """
+  Encodes an enum value by attribute name, e.g. `encode("orientation-requested", :landscape)`
+  returns `{:ok, 4}`.
+  """
+  def encode(attribute, key) do
+    case get_enum_module(attribute) do
+      # Modules that only implement the behaviour (e.g. PrinterType) can't encode.
+      {:ok, mod} ->
+        if Code.ensure_loaded?(mod) and function_exported?(mod, :encode, 1),
+          do: mod.encode(key),
+          else: {:error, :bad_key}
+
+      :error ->
+        {:error, {:enum_not_defined, attribute, key}}
+    end
+  end
+
   def decode(attribute, value) do
     case get_enum_module(attribute) do
       {:ok, mod} ->

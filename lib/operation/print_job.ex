@@ -39,6 +39,7 @@ defmodule Hippy.Operation.PrintJob do
             language: @def_lang,
             operation_attributes: [],
             groups: [],
+            attributes: %{},
             job_attributes: [],
             job_name: @def_job_name,
             document_format: nil,
@@ -53,6 +54,7 @@ defmodule Hippy.Operation.PrintJob do
       language: Keyword.get(opts, :language, @def_lang),
       operation_attributes: Keyword.get(opts, :operation_attributes, []),
       groups: Keyword.get(opts, :groups, []),
+      attributes: Keyword.get(opts, :attributes, %{}),
       job_attributes: Keyword.get(opts, :job_attributes, []),
       document_format: Keyword.get(opts, :document_format),
       orientation: Keyword.get(opts, :orientation, @def_orientation)

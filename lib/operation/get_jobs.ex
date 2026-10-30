@@ -19,6 +19,7 @@ defmodule Hippy.Operation.GetJobs do
             language: @def_lang,
             operation_attributes: [],
             groups: [],
+            attributes: %{},
             which_jobs: @def_jobs,
             requested_attributes: @def_atts
 
@@ -29,6 +30,7 @@ defmodule Hippy.Operation.GetJobs do
       language: Keyword.get(opts, :language, @def_lang),
       operation_attributes: Keyword.get(opts, :operation_attributes, []),
       groups: Keyword.get(opts, :groups, []),
+      attributes: Keyword.get(opts, :attributes, %{}),
       which_jobs: Keyword.get(opts, :which_jobs, @def_jobs),
       requested_attributes: Keyword.get(opts, :requested_attributes, @def_atts)
     }

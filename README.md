@@ -131,26 +131,32 @@ Hippy.Operation.PrintJob.new(printer_uri, doc,
 ```
 ### Send other attributes
 
-Every operation accepts `operation_attributes:`, and Print-Job also accepts `job_attributes:`, for attributes Hippy doesn't have an option for. They're `{syntax, name, value}` tuples, in the same form responses are decoded to, and replace an attribute of the same name that Hippy would otherwise send. See `Hippy.Encoder.encode/1` for the supported syntaxes.
+Every operation accepts `attributes:`, a map of attribute names to values. Hippy looks each one up in the [IANA IPP registry](https://www.iana.org/assignments/ipp-registrations/) to work out its syntax and which group it goes in, so `copies` and `sides` go in the job attributes and `job-name` in the operation attributes:
 
 ```elixir
-a4 = %{"x-dimension" => {:integer, 21000}, "y-dimension" => {:integer, 29700}}
-
 Hippy.Operation.PrintJob.new(printer_uri, doc,
-  document_format: "application/pdf",
-  job_attributes: [
-    {:integer, "copies", 2},
-    {:keyword, "sides", "two-sided-long-edge"},
-    {:collection, "media-col", %{"media-size" => {:collection, a4}}}
-  ]
+  attributes: %{
+    "job-name" => "TPS Report",
+    "document-format" => "application/pdf",
+    "copies" => 2,
+    "sides" => "two-sided-long-edge",
+    "orientation-requested" => :landscape,
+    "media-col" => %{"media-size" => %{"x-dimension" => 21000, "y-dimension" => 29700}},
+    # Subscription attributes go in their own group: get notified when the job completes.
+    "notify-pull-method" => "ippget",
+    "notify-events" => ["job-completed"]
+  }
 )
 |> Hippy.send_operation()
 ```
 
-Other attribute groups go in `groups:`, as `{tag, attributes}`. For example, to be notified when the job completes:
+Maps are collections and lists are sets. For attributes that can be a keyword or a name (such as `media`), a value spelt like a keyword is sent as one, and anything else as a name. `{syntax, value}` gives the syntax explicitly, and is needed for attributes the registry doesn't know, which go in the operation's main group (job attributes for Print-Job). See `Hippy.AttributeInference`.
+
+To control the syntax and group yourself, every operation also accepts `operation_attributes:`, and Print-Job `job_attributes:`, as `{syntax, name, value}` tuples, in the same form responses are decoded to. Other attribute groups go in `groups:`, as `{tag, attributes}`. These replace an attribute of the same name from `attributes:` or Hippy's defaults. See `Hippy.Encoder.encode/1` for the supported syntaxes.
 
 ```elixir
 Hippy.Operation.PrintJob.new(printer_uri, doc,
+  job_attributes: [{:integer, "copies", 2}, {:keyword, "x-acme-finish", "matte"}],
   groups: [
     {:subscription_attributes,
      [{:keyword, "notify-pull-method", "ippget"}, {:keyword, "notify-events", "job-completed"}]}

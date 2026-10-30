@@ -21,6 +21,7 @@ defmodule Hippy.Operation.CupsGetDefault do
             language: @def_lang,
             operation_attributes: [],
             groups: [],
+            attributes: %{},
             requested_attributes: @def_atts
 
   def new(server_uri, opts \\ []) do
@@ -30,6 +31,7 @@ defmodule Hippy.Operation.CupsGetDefault do
       language: Keyword.get(opts, :language, @def_lang),
       operation_attributes: Keyword.get(opts, :operation_attributes, []),
       groups: Keyword.get(opts, :groups, []),
+      attributes: Keyword.get(opts, :attributes, %{}),
       requested_attributes: Keyword.get(opts, :requested_attributes, @def_atts)
     }
   end

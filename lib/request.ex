@@ -34,25 +34,30 @@ defmodule Hippy.Request do
   than a printer (with no `printer_uri` field) get no `printer-uri` attribute. Other request fields, such as
   `job_attributes` and `data`, can be given in `fields`.
 
-  Attributes in the operation's `operation_attributes` and `job_attributes` fields, if it has
-  them, are added to the matching group. Each replaces an attribute of the same name, so callers
-  can override the defaults. Groups in the operation's `groups` field are added after any given
+  Attributes in the operation's `attributes` field, a map of names to values, are placed and
+  given their syntax by `Hippy.AttributeInference`. Attributes in its `operation_attributes` and
+  `job_attributes` fields, if it has them, are added to the matching group. Each replaces an
+  attribute of the same name (explicit ones last), so callers can override the defaults. Groups in the operation's `groups` field are added after any given
   in `fields`.
   """
   def new(operation_id, op, attributes \\ [], fields \\ []) do
+    inferred = Hippy.AttributeInference.place(operation_id, Map.get(op, :attributes, %{}))
+
     operation_attributes =
       ([
          {:charset, "attributes-charset", op.charset},
          {:natural_language, "attributes-natural-language", op.language}
        ] ++ printer_uri(op) ++ attributes)
+      |> merge(inferred.operation)
       |> merge(Map.get(op, :operation_attributes, []))
 
     job_attributes =
       fields
       |> Keyword.get(:job_attributes, [])
+      |> merge(inferred.job)
       |> merge(Map.get(op, :job_attributes, []))
 
-    groups = Keyword.get(fields, :groups, []) ++ Map.get(op, :groups, [])
+    groups = Keyword.get(fields, :groups, []) ++ inferred.groups ++ Map.get(op, :groups, [])
 
     struct!(
       %__MODULE__{
@@ -72,12 +77,16 @@ defmodule Hippy.Request do
   defp printer_uri(_op), do: []
 
   defp merge(attributes, overrides) do
-    Enum.reduce(overrides, attributes, fn {_syntax, name, _value} = override, acc ->
-      if List.keymember?(acc, name, 1) do
-        List.keyreplace(acc, name, 1, override)
-      else
-        acc ++ [override]
-      end
+    Enum.reduce(overrides, attributes, fn
+      {_syntax, nil, _value} = additional, acc ->
+        acc ++ [additional]
+
+      {_syntax, name, _value} = override, acc ->
+        if List.keymember?(acc, name, 1) do
+          List.keyreplace(acc, name, 1, override)
+        else
+          acc ++ [override]
+        end
     end)
   end
 end

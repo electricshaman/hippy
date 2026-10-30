@@ -115,6 +115,24 @@ defmodule Hippy.OperationTest do
     assert Hippy.Request.new(0x0B, op, [], groups: [printer]).groups == [printer, subscription]
   end
 
+  test "attributes are placed by inference, and explicit options override them" do
+    req =
+      PrintJob.new(@uri, "doc",
+        job_name: "Default",
+        attributes: %{
+          "copies" => 2,
+          "job-name" => "Inferred",
+          "orientation-requested" => :landscape
+        },
+        job_attributes: [{:integer, "copies", 3}]
+      )
+      |> Operation.build_request()
+
+    # Inferred attributes replace the defaults; explicit ones replace inferred ones.
+    assert {:name_without_language, "job-name", "Inferred"} in req.operation_attributes
+    assert req.job_attributes == [{:enum, "orientation-requested", 4}, {:integer, "copies", 3}]
+  end
+
   test "every operation accepts operation attributes" do
     extra = {:name_without_language, "requesting-user-name", "hippy"}
 
