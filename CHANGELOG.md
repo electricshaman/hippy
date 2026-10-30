@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- `Hippy.Response.printer_attributes` is now a list of groups, one per printer, like
+  `job_attributes`. Responses with several printers, such as CUPS-Get-Printers, used to be
+  flattened into one group, with each attribute's values combined into a list across printers,
+  so there was no reliable way to tell which value belonged to which printer. Code reading
+  `printer_attributes` directly needs to take the first group (or use `Hippy.Response.printer/1`).
+  `AttributeGroup.to_map(res.printer_attributes)` still returns the first printer's map.
+- `Hippy.Response.printer/1` returns `nil` instead of an empty map when there is no printer, like
+  `Hippy.Response.job/1`.
+
+### Added
+
+- `Hippy.Response.printers/1` returns a map per printer.
+
 ## 0.5.1 (2026-10-30)
 
 ### Fixes

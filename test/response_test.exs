@@ -26,6 +26,24 @@ defmodule Hippy.ResponseTest do
     assert Response.unsupported(res) == %{}
   end
 
+  test "printers returns a map per printer, and printer the first" do
+    res = %Response{
+      printer_attributes: [
+        [{:name_without_language, "printer-name", "a"}, {:enum, "printer-state", :idle}],
+        [{:name_without_language, "printer-name", "b"}]
+      ]
+    }
+
+    assert Response.printers(res) == [
+             %{"printer-name" => "a", "printer-state" => :idle},
+             %{"printer-name" => "b"}
+           ]
+
+    assert Response.printer(res) == hd(Response.printers(res))
+    assert Response.printer(%Response{}) == nil
+    assert Response.printers(%Response{}) == []
+  end
+
   test "unsupported attributes as a map" do
     res = %Response{
       unsupported_attributes: [

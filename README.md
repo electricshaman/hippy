@@ -208,7 +208,8 @@ Hippy.Response.job(res)["job-id"]
 
 - `Hippy.Response.job/1`: the job, for responses about one job, such as Print-Job and Get-Job-Attributes.
 - `Hippy.Response.jobs/1`: a map per job, for Get-Jobs.
-- `Hippy.Response.printer/1`: printer attributes, for Get-Printer-Attributes.
+- `Hippy.Response.printer/1`: the printer, for Get-Printer-Attributes.
+- `Hippy.Response.printers/1`: a map per printer, for CUPS-Get-Printers.
 - `Hippy.Response.operation/1` and `Hippy.Response.unsupported/1`: operation attributes (such as `status-message`) and attributes the printer didn't support.
 
 Attributes with several values are lists. `Hippy.AttributeGroup.to_map/1` converts any list of attribute tuples the same way.

@@ -18,9 +18,11 @@ defmodule Hippy.Decoder do
     :unknown_attributes
   ]
 
-  # Groups that can appear more than once (e.g. one per job) are kept as a list of groups.
+  # Groups that can appear more than once (e.g. one per job, or one per printer from
+  # CUPS-Get-Printers) are kept as a list of groups.
   @repeated_groups [
     :job_attributes,
+    :printer_attributes,
     :subscription_attributes,
     :event_notification_attributes,
     :resource_attributes,
@@ -124,9 +126,8 @@ defmodule Hippy.Decoder do
     end)
   end
 
-  # Groups such as printer attributes are returned as one flat group. When a response has several
-  # (e.g. one per printer from CUPS-Get-Printers), attributes with the same name are combined
-  # into a list with every group's values, in order, so the lists stay aligned by position.
+  # Other groups, such as operation attributes, are returned as one flat group. If a response has
+  # several, attributes with the same name are combined into a list with every group's values.
   defp combine_groups([group]), do: group
 
   defp combine_groups(groups) do

@@ -69,13 +69,15 @@ defmodule Hippy.Integration.CupsTest do
         assert :portrait in attrs["orientation-requested-supported"]
 
         # Every enum value CUPS sends is one Hippy knows.
-        for {:enum, name, value} <- res.printer_attributes, v <- List.wrap(value) do
+        [printer] = res.printer_attributes
+
+        for {:enum, name, value} <- printer, v <- List.wrap(value) do
           refute is_integer(v), "#{name} has an undecoded value #{v}"
         end
       end
     end
 
-    test "CUPS-Get-Printers keeps each printer's values aligned", %{http: http} do
+    test "CUPS-Get-Printers returns each printer separately", %{http: http} do
       req = %Hippy.Request{
         operation_id: Hippy.IPP.Operation.cups_get_printers(),
         operation_attributes: [
@@ -86,11 +88,9 @@ defmodule Hippy.Integration.CupsTest do
       }
 
       {:ok, res} = Hippy.Server.send_request(req, "#{http}/")
-      printers = Response.printer(res)
+      states = Map.new(Response.printers(res), &{&1["printer-name"], &1["printer-state"]})
 
-      states =
-        Enum.zip(printers["printer-name"], printers["printer-state"]) |> Map.new()
-
+      assert length(res.printer_attributes) == 6
       assert map_size(states) == 6
       assert states["held_jobs"] == :stopped
       assert states["raw"] == :idle

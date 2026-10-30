@@ -8,6 +8,9 @@ defmodule Hippy.DecoderTest do
 
   defp response(groups), do: @header <> @operation_group <> groups <> <<0x03>>
 
+  # The attributes of a response with exactly one printer group.
+  defp printer(%{printer_attributes: [group]}), do: group
+
   defp keyword(name, value),
     do: <<0x44, byte_size(name)::16, name::binary, byte_size(value)::16, value::binary>>
 
@@ -33,7 +36,7 @@ defmodule Hippy.DecoderTest do
     assert res.unsupported_attributes == [{:keyword, "foo", "bar"}]
   end
 
-  test "keeps attribute order across repeated groups" do
+  test "keeps repeated printer groups separate, in order" do
     res =
       Decoder.decode(
         response(
@@ -41,7 +44,10 @@ defmodule Hippy.DecoderTest do
         )
       )
 
-    assert Enum.map(res.printer_attributes, &elem(&1, 1)) == ["a", "b", "c"]
+    assert res.printer_attributes == [
+             [{:keyword, "a", "1"}, {:keyword, "b", "1"}],
+             [{:keyword, "c", "1"}]
+           ]
   end
 
   test "decodes textWithLanguage and nameWithLanguage" do
@@ -49,7 +55,7 @@ defmodule Hippy.DecoderTest do
     name = <<0x36, 4::16, "name", 9::16, 2::16, "fr", 3::16, "xyz">>
     res = Decoder.decode(response(<<0x04>> <> text <> name))
 
-    assert res.printer_attributes == [
+    assert printer(res) == [
              {:text_with_language, "text", {"en", "abc"}},
              {:name_with_language, "name", {"fr", "xyz"}}
            ]
@@ -65,7 +71,7 @@ defmodule Hippy.DecoderTest do
         )
       )
 
-    assert res.printer_attributes == [
+    assert printer(res) == [
              {:enum, "x-unknown-state", 3},
              {:enum, "finishings-supported", 0x40000001},
              {:enum, "printer-state", :idle}
@@ -80,7 +86,7 @@ defmodule Hippy.DecoderTest do
         value.("a") <> value.("b") <> value.("c") <> value.("d") <> <<0x37, 0::32>>
 
     res = Decoder.decode(response(<<0x04>> <> collection))
-    [{:collection, "col", %{"m" => members}}] = res.printer_attributes
+    [{:collection, "col", %{"m" => members}}] = printer(res)
     assert Enum.map(members, &elem(&1, 2)) == ["a", "b", "c", "d"]
   end
 
@@ -96,7 +102,8 @@ defmodule Hippy.DecoderTest do
             {0x05, :unsupported_attributes}
           ] do
         res = Decoder.decode(response(<<delimiter>> <> set))
-        assert {:keyword, "reasons", ["a", "b", "c"]} in res[field]
+        attributes = if field == :printer_attributes, do: printer(res), else: res[field]
+        assert {:keyword, "reasons", ["a", "b", "c"]} in attributes
       end
     end
 
@@ -128,7 +135,7 @@ defmodule Hippy.DecoderTest do
           )
         )
 
-      assert res.printer_attributes == [
+      assert printer(res) == [
                {:keyword, "media", ["a4", "custom", "a4"]},
                {:keyword, "other", "x"}
              ]
@@ -140,11 +147,11 @@ defmodule Hippy.DecoderTest do
           response(<<0x04>> <> enum("printer-state", 3) <> <<0x23, 0::16, 4::16, 5::32>>)
         )
 
-      assert res.printer_attributes == [{:enum, "printer-state", [:idle, :stopped]}]
+      assert printer(res) == [{:enum, "printer-state", [:idle, :stopped]}]
     end
   end
 
-  test "several printer groups keep every value, aligned by position" do
+  test "several printers are kept as separate groups" do
     # e.g. CUPS-Get-Printers, which returns one printer attributes group per printer.
     printer = fn name, state, reason ->
       <<0x04>> <>
@@ -160,9 +167,21 @@ defmodule Hippy.DecoderTest do
       )
 
     assert res.printer_attributes == [
-             {:name_without_language, "printer-name", ["front-desk", "warehouse", "lab"]},
-             {:enum, "printer-state", [:idle, :stopped, :idle]},
-             {:keyword, "r", ["none", "none", "media-empty"]}
+             [
+               {:name_without_language, "printer-name", "front-desk"},
+               {:enum, "printer-state", :idle},
+               {:keyword, "r", "none"}
+             ],
+             [
+               {:name_without_language, "printer-name", "warehouse"},
+               {:enum, "printer-state", :stopped},
+               {:keyword, "r", "none"}
+             ],
+             [
+               {:name_without_language, "printer-name", "lab"},
+               {:enum, "printer-state", :idle},
+               {:keyword, "r", "media-empty"}
+             ]
            ]
   end
 
@@ -178,7 +197,7 @@ defmodule Hippy.DecoderTest do
         )
       )
 
-    assert res.printer_attributes == [
+    assert printer(res) == [
              {:keyword, "types", ["a", "b", "c"]},
              {:keyword, "sheet-back", "normal"}
            ]
@@ -209,7 +228,7 @@ defmodule Hippy.DecoderTest do
         Decoder.decode(response(<<0x0B>> <> keyword("x", "1") <> <<0x04>> <> keyword("y", "2")))
 
       assert res.unknown_attributes == [{:keyword, "x", "1"}]
-      assert res.printer_attributes == [{:keyword, "y", "2"}]
+      assert printer(res) == [{:keyword, "y", "2"}]
     end
 
     test "out-of-band values" do
@@ -226,7 +245,7 @@ defmodule Hippy.DecoderTest do
           )
         )
 
-      assert res.printer_attributes == [
+      assert printer(res) == [
                {:not_settable, "printer-name", :not_settable},
                {:delete_attribute, "job-hold-until", :delete_attribute},
                {:admin_define, "media", :admin_define},
@@ -237,7 +256,7 @@ defmodule Hippy.DecoderTest do
 
     test "syntaxes reserved for future use are kept as raw bytes" do
       res = Decoder.decode(response(<<0x04, 0x60, 1::16, "x", 2::16, 1, 2>>))
-      assert res.printer_attributes == [{:octet_string, "x", <<1, 2>>}]
+      assert printer(res) == [{:octet_string, "x", <<1, 2>>}]
     end
   end
 end
