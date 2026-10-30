@@ -4,9 +4,10 @@
 
 ### Breaking changes
 
-- Attributes the IANA registry defines as sets (`1setOf`) are always lists in
-  `AttributeGroup.to_map/1` and the `Hippy.Response` map helpers, even with a single value. For
-  example `Hippy.Response.job(res)["job-state-reasons"]` is now `["none"]` rather than `"none"`.
+- Attributes and collection members the IANA registry defines as sets (`1setOf`) are always
+  lists in `AttributeGroup.to_map/1` and the `Hippy.Response` map helpers, even with a single
+  value. For example `Hippy.Response.job(res)["job-state-reasons"]` is now `["none"]` rather
+  than `"none"`, and `finishings-col`'s `folding` member is a list of collections.
   Before, the type depended on how many values the printer sent. Attributes the registry
   doesn't know, and out-of-band values such as `:no_value`, are unchanged, and so are the
   tuples in `Hippy.Response`'s fields.
