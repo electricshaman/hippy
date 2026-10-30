@@ -292,9 +292,13 @@ defmodule Hippy.Integration.CupsTest do
     end
 
     test "a pinned self-signed certificate is accepted (as in the README)", ctx do
+      op = GetPrinterAttributes.new(printer(ctx.https, "raw"))
+
+      # CUPS creates its certificate on the first HTTPS connection, which may not have happened
+      # yet depending on test order.
+      send!(op, @anonymous)
       pem = container_exec(ctx.container, ["sh", "-c", "cat /etc/cups/ssl/*.crt"])
       [{:Certificate, pinned, _}] = :public_key.pem_decode(pem)
-      op = GetPrinterAttributes.new(printer(ctx.https, "raw"))
 
       # Erlang never trusts a self-signed server certificate through cacerts.
       capture_log(fn ->
