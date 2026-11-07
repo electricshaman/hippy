@@ -1,5 +1,7 @@
 # Changelog
 
+## Unreleased
+
 ## 0.7.0 (2026-11-07)
 
 ### Upgrading from 0.6
