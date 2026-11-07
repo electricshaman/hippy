@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- Operations for controlling jobs and printers (#37):
+  - `Hippy.Operation.ValidateJob` asks whether a printer would accept a job, without printing.
+    It takes the same options as `PrintJob` and sends the same attributes.
+  - `Hippy.Operation.CreateJob` and `Hippy.Operation.SendDocument`, for jobs made of several
+    documents, or created before their document is ready.
+  - `Hippy.Operation.HoldJob` and `Hippy.Operation.ReleaseJob`.
+  - `Hippy.Operation.PausePrinter` and `Hippy.Operation.ResumePrinter`.
+
 ## 0.7.0 (2026-11-07)
 
 ### Upgrading from 0.6

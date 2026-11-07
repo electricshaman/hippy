@@ -465,6 +465,21 @@ Hippy.Message.jobs(res)
 
 By default you get completed jobs. `which_jobs: :not_completed` gives the ones still pending or printing.
 
+### Check, hold and pause
+
+Ask whether a printer would accept a job before sending it, without printing anything. It takes the same options as `PrintJob`, and a printer that wouldn't accept it returns an IPP error saying why:
+
+```elixir
+printer
+|> Hippy.Operation.ValidateJob.new(
+  document_format: "application/pdf",
+  attributes: %{"sides" => "two-sided-long-edge"}
+)
+|> Hippy.send_operation()
+```
+
+`HoldJob` keeps a job in the queue until `ReleaseJob`, and `PausePrinter` stops a printer until `ResumePrinter`. `CreateJob` and `SendDocument` build one job from several documents. CUPS only lets a job's owner hold, release or add documents to it, and administrators pause printers (see [Authentication](#authentication)).
+
 ### List the printers on a CUPS server
 
 CUPS-Get-Printers is sent to the server rather than a printer. CUPS includes classes in the results; `printer_type: 0, printer_type_mask: 1` leaves them out, and `Hippy.Operation.CupsGetClasses` returns only classes. `Hippy.Operation.CupsGetDefault` returns the default printer.
