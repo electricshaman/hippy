@@ -15,13 +15,20 @@ defmodule Hippy.Integration.CupsTest do
 
   alias Hippy.Operation.{
     CancelJob,
+    CreateJob,
     CupsGetClasses,
     CupsGetDefault,
     CupsGetPrinters,
     GetJobAttributes,
     GetJobs,
     GetPrinterAttributes,
-    PrintJob
+    HoldJob,
+    PausePrinter,
+    PrintJob,
+    ReleaseJob,
+    ResumePrinter,
+    SendDocument,
+    ValidateJob
   }
 
   alias Hippy.IPP.Orientation
@@ -719,6 +726,135 @@ defmodule Hippy.Integration.CupsTest do
     end
   end
 
+  describe "job and printer control" do
+    test "Validate-Job checks a job without printing it", %{http: http} do
+      uri = printer(http, "filtered")
+
+      jobs = fn ->
+        uri |> GetJobs.new(which_jobs: :all) |> send!() |> Message.jobs() |> length()
+      end
+
+      before = jobs.()
+
+      assert uri
+             |> ValidateJob.new(document_format: "application/pdf", attributes: %{"copies" => 2})
+             |> send!()
+             |> Message.status() == :successful_ok
+
+      error =
+        uri
+        |> ValidateJob.new(document_format: "application/x-nope")
+        |> ipp_error!()
+
+      assert error.status == :client_error_document_format_not_supported
+      assert Message.unsupported(error.response) == %{"document-format" => "application/x-nope"}
+      assert jobs.() == before
+    end
+
+    test "Create-Job and Send-Document print one job made of two documents", %{https: https} do
+      uri = printer(https, "raw")
+
+      id =
+        uri
+        |> CreateJob.new(job_name: "Two documents", attributes: %{"copies" => 1})
+        |> send!(@user)
+        |> Message.job()
+        |> Map.fetch!("job-id")
+
+      assert uri
+             |> SendDocument.new(id, "first", document_name: "first.txt", last_document: false)
+             |> send!(@user)
+             |> Message.status() == :successful_ok
+
+      assert job_attributes!(uri, id, @user)["job-state"] in [
+               :pending,
+               :pending_held,
+               :processing
+             ]
+
+      uri
+      |> SendDocument.new(id, "second", document_format: "application/octet-stream")
+      |> send!(@user)
+
+      job = wait_for_job_state(uri, id, [:completed], @user)
+      assert job["number-of-documents"] == 2
+      assert job["job-name"] == "Two documents"
+    end
+
+    test "Send-Document needs the job's owner", %{http: http, https: https} do
+      uri = printer(https, "raw")
+      id = uri |> CreateJob.new() |> send!(@user) |> Message.job() |> Map.fetch!("job-id")
+
+      assert {:error, %Hippy.HTTPError{status: 401}} =
+               uri |> SendDocument.new(id, "doc") |> Hippy.send_operation(@anonymous)
+
+      assert {:error, %Hippy.HTTPError{status: 426}} =
+               http |> printer("raw") |> SendDocument.new(id, "doc") |> Hippy.send_operation()
+
+      uri |> CancelJob.new(id) |> send!(@user)
+    end
+
+    test "Hold-Job and Release-Job", %{https: https} do
+      uri = printer(https, "held_cancel")
+      id = uri |> PrintJob.new(pdf(), job_name: "Held") |> print!(@user)
+
+      assert uri |> HoldJob.new(id) |> send!(@user) |> Message.status() == :successful_ok
+      assert job_attributes!(uri, id, @user)["job-state"] == :pending_held
+
+      assert uri |> ReleaseJob.new(id) |> send!(@user) |> Message.status() == :successful_ok
+      assert job_attributes!(uri, id, @user)["job-state"] == :pending
+
+      uri |> CancelJob.new(id) |> send!(@user)
+    end
+
+    test "Hold-Job until a time", %{https: https} do
+      uri = printer(https, "held_cancel")
+      id = uri |> PrintJob.new(pdf()) |> print!(@user)
+
+      uri |> HoldJob.new(id, attributes: %{"job-hold-until" => "night"}) |> send!(@user)
+      job = job_attributes!(uri, id, @user)
+
+      assert job["job-state"] == :pending_held
+      assert job["job-hold-until"] == "night"
+
+      uri |> CancelJob.new(id) |> send!(@user)
+    end
+
+    test "Pause-Printer and Resume-Printer, as an administrator", ctx do
+      name = "pausable_#{System.unique_integer([:positive])}"
+      on_exit(fn -> docker(["exec", ctx.container, "lpadmin", "-x", name]) end)
+
+      container_exec(ctx.container, [
+        "lpadmin",
+        "-p",
+        name,
+        "-E",
+        "-v",
+        "file:///dev/null",
+        "-m",
+        "raw"
+      ])
+
+      uri = printer(ctx.https, name)
+
+      state = fn ->
+        ctx.http |> printer(name) |> GetPrinterAttributes.new() |> send!() |> Message.printer()
+      end
+
+      assert {:error, %Hippy.HTTPError{status: 401}} =
+               uri |> PausePrinter.new() |> Hippy.send_operation(@anonymous)
+
+      assert uri |> PausePrinter.new() |> send!(@admin) |> Message.status() == :successful_ok
+      assert %{"printer-state" => :stopped, "printer-state-reasons" => reasons} = state.()
+      assert "paused" in reasons
+      refute Hippy.printer_ready?(state.())
+
+      assert uri |> ResumePrinter.new() |> send!(@admin) |> Message.status() == :successful_ok
+      assert state.()["printer-state"] == :idle
+      assert Hippy.printer_ready?(state.())
+    end
+  end
+
   describe "Get-Jobs and Get-Job-Attributes" do
     test "which_jobs filters pending jobs", %{http: http} do
       uri = printer(http, "held_jobs")
@@ -958,7 +1094,23 @@ defmodule Hippy.Integration.CupsTest do
   end
 
   defp job_attributes!(uri, id, opts \\ []) do
-    GetJobAttributes.new(uri, id) |> send!(opts) |> Message.job()
+    uri |> GetJobAttributes.new(id) |> send!(opts) |> Message.job()
+  end
+
+  defp wait_for_job_state(uri, id, states, opts, attempts \\ 100) do
+    attributes = job_attributes!(uri, id, opts)
+
+    cond do
+      attributes["job-state"] in states ->
+        attributes
+
+      attempts > 0 ->
+        Process.sleep(100)
+        wait_for_job_state(uri, id, states, opts, attempts - 1)
+
+      true ->
+        flunk("job #{id} is #{inspect(attributes["job-state"])}, expected #{inspect(states)}")
+    end
   end
 
   defp job_ids(uri, which) do

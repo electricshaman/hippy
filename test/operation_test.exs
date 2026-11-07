@@ -5,13 +5,20 @@ defmodule Hippy.OperationTest do
 
   alias Hippy.Operation.{
     CancelJob,
+    CreateJob,
     CupsGetClasses,
     CupsGetDefault,
     CupsGetPrinters,
     GetJobAttributes,
     GetJobs,
     GetPrinterAttributes,
-    PrintJob
+    HoldJob,
+    PausePrinter,
+    PrintJob,
+    ReleaseJob,
+    ResumePrinter,
+    SendDocument,
+    ValidateJob
   }
 
   @uri "http://localhost:631/printers/p"
@@ -188,10 +195,92 @@ defmodule Hippy.OperationTest do
           PrintJob.new(@uri, "doc", operation_attributes: [extra]),
           CupsGetPrinters.new(@uri, operation_attributes: [extra]),
           CupsGetClasses.new(@uri, operation_attributes: [extra]),
-          CupsGetDefault.new(@uri, operation_attributes: [extra])
+          CupsGetDefault.new(@uri, operation_attributes: [extra]),
+          ValidateJob.new(@uri, operation_attributes: [extra]),
+          CreateJob.new(@uri, operation_attributes: [extra]),
+          SendDocument.new(@uri, 1, "doc", operation_attributes: [extra]),
+          HoldJob.new(@uri, 1, operation_attributes: [extra]),
+          ReleaseJob.new(@uri, 1, operation_attributes: [extra]),
+          PausePrinter.new(@uri, operation_attributes: [extra]),
+          ResumePrinter.new(@uri, operation_attributes: [extra])
         ] do
       assert op |> Operation.build_request() |> group(:operation) |> List.last() ==
                {"requesting-user-name", [name_without_language: "hippy"]}
+    end
+  end
+
+  describe "job and printer control" do
+    test "Validate-Job sends what the same Print-Job would, without a document" do
+      opts = [
+        job_name: "Report",
+        document_format: "application/pdf",
+        attributes: %{"copies" => 2}
+      ]
+
+      validate = @uri |> ValidateJob.new(opts) |> Operation.build_request()
+      print = @uri |> PrintJob.new("doc", opts) |> Operation.build_request()
+
+      assert validate.code == 0x0004
+      assert validate.groups == print.groups
+      assert validate.data == <<>>
+    end
+
+    test "Create-Job sends the job's attributes, and Send-Document each document" do
+      create = @uri |> CreateJob.new(job_name: "Contract") |> Operation.build_request()
+
+      assert create.code == 0x0005
+      assert {"job-name", [name_without_language: "Contract"]} in group(create, :operation)
+      assert {"orientation-requested", [enum: 3]} in group(create, :job)
+
+      send = @uri |> SendDocument.new(7, "doc") |> Operation.build_request()
+
+      assert send.code == 0x0006
+      assert send.data == "doc"
+
+      assert group(send, :operation) |> Enum.drop(3) == [
+               {"job-id", [integer: 7]},
+               {"last-document", [boolean: 1]}
+             ]
+
+      send =
+        @uri
+        |> SendDocument.new(7, "doc",
+          last_document: false,
+          document_format: "application/pdf",
+          document_name: "cover.pdf"
+        )
+        |> Operation.build_request()
+
+      assert group(send, :operation) |> Enum.drop(3) == [
+               {"job-id", [integer: 7]},
+               {"last-document", [boolean: 0]},
+               {"document-format", [mime_media_type: "application/pdf"]},
+               {"document-name", [name_without_language: "cover.pdf"]}
+             ]
+    end
+
+    test "Hold-Job and Release-Job are about a job, and job-hold-until is optional" do
+      for {op, code} <- [{HoldJob, 0x000C}, {ReleaseJob, 0x000D}] do
+        message = @uri |> op.new(5) |> Operation.build_request()
+        assert message.code == code
+        assert group(message, :operation) |> List.last() == {"job-id", [integer: 5]}
+      end
+
+      message =
+        @uri
+        |> HoldJob.new(5, attributes: %{"job-hold-until" => "night"})
+        |> Operation.build_request()
+
+      assert {"job-hold-until", [keyword: "night"]} in group(message, :operation)
+    end
+
+    test "Pause-Printer and Resume-Printer are about the printer" do
+      for {op, code} <- [{PausePrinter, 0x0010}, {ResumePrinter, 0x0011}] do
+        message = @uri |> op.new() |> Operation.build_request()
+        assert message.code == code
+        assert names(group(message, :operation)) |> List.last() == "printer-uri"
+        assert Enum.map(message.groups, &elem(&1, 0)) == [:operation]
+      end
     end
   end
 end
