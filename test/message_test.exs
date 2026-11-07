@@ -6,12 +6,12 @@ defmodule Hippy.MessageTest do
   test "captured responses decode exactly and re-encode to the same bytes" do
     for path <- Path.wildcard("test/captures/*_res.bin") do
       bin = File.read!(path)
-      assert Message.encode(Message.decode(bin)) == bin, path
+      assert bin |> Message.decode() |> Message.encode() == bin, path
     end
   end
 
   test "groups are kept in order, one per job" do
-    message = Message.decode(File.read!("test/captures/ipp_get_jobs_res.bin"))
+    message = "test/captures/ipp_get_jobs_res.bin" |> File.read!() |> Message.decode()
     [{:operation, _} | jobs] = message.groups
 
     assert length(jobs) > 1
@@ -23,7 +23,7 @@ defmodule Hippy.MessageTest do
   end
 
   test "values are as on the wire" do
-    message = Message.decode(File.read!("test/captures/get_printer_attributes_res.bin"))
+    message = "test/captures/get_printer_attributes_res.bin" |> File.read!() |> Message.decode()
     {:printer, attributes} = List.keyfind(message.groups, :printer, 0)
 
     assert {"printer-state", [enum: state]} = List.keyfind(attributes, "printer-state", 0)
@@ -68,13 +68,15 @@ defmodule Hippy.MessageTest do
 
       bin = Message.encode(message)
       assert Message.decode(bin) == message, inspect(message, limit: :infinity)
-      assert Message.encode(Message.decode(bin)) == bin
+      assert bin |> Message.decode() |> Message.encode() == bin
     end
   end
 
   test "streamed data" do
     message = %Message{code: 2, request_id: 1, groups: [{:operation, []}], data: ["ab", "cd"]}
-    assert Enum.join(Message.encode(message)) == Message.encode(%{message | data: "abcd"})
+
+    assert message |> Message.encode() |> Enum.join() ==
+             Message.encode(%{message | data: "abcd"})
   end
 
   test "invalid messages raise" do

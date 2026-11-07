@@ -33,6 +33,7 @@ end
 
 defimpl Hippy.Operation, for: Hippy.Operation.GetPrinterAttributes do
   def build_request(op) do
-    Hippy.Request.new(Hippy.IPP.Operation.get_printer_attributes(), op)
+    Hippy.IPP.Operation.get_printer_attributes()
+    |> Hippy.Message.build_request(op)
   end
 end

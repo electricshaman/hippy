@@ -1,78 +1,10 @@
 defmodule Hippy.Decoder do
   @moduledoc """
-  Functions for handling binary decoding of an IPP response.
-
-  Decoding happens in two steps. The response is first parsed exactly as it was sent: one
-  `{syntax, name, value}` tuple per value, with values as they appear on the wire. That's what
-  `decode/2` returns with `raw: true`. By default, the attributes are then interpreted (see
-  `decode/2`).
+  Decodes IPP messages. See `Hippy.Message.decode/1`.
   """
 
-  @groups [
-    :operation_attributes,
-    :job_attributes,
-    :printer_attributes,
-    :unsupported_attributes,
-    :subscription_attributes,
-    :event_notification_attributes,
-    :resource_attributes,
-    :document_attributes,
-    :system_attributes,
-    :unknown_attributes
-  ]
-
-  # Groups that can appear more than once (e.g. one per job, or one per printer from
-  # CUPS-Get-Printers) are kept as a list of groups.
-  @repeated_groups [
-    :job_attributes,
-    :printer_attributes,
-    :subscription_attributes,
-    :event_notification_attributes,
-    :resource_attributes,
-    :document_attributes
-  ]
-
-  @doc """
-  Decodes an IPP response from its binary into a response struct.
-
-  By default, attributes are interpreted:
-
-    * Additional values of an attribute (sent without a name) are combined into a list.
-    * Attributes repeated by name within a group are merged.
-    * Values are converted by `Hippy.AttributeTransform` (enums to atoms, URIs to `URI`, dates
-      to `DateTime`, and so on), and collections become maps.
-    * The status code is an atom, or the integer if Hippy doesn't know it.
-
-  ## Options
-
-    * `:raw` - when `true`, return the response exactly as it was sent: one tuple per value,
-      with `nil` as the name of an attribute's additional values, values as they appear on the
-      wire (enums and status codes as integers, booleans as 0 or 1, URIs as strings, dates,
-      resolutions and ranges as tuples), collections as ordered lists of `{member, value}`, and
-      repeated attributes left as they are. Value tags Hippy doesn't know keep their tag number
-      as the syntax and their bytes as the value. `Hippy.Encoder.encode/1` accepts all of these,
-      and encoding the groups again gives the original bytes. (Groups of different kinds are
-      kept in separate fields, so the order between them isn't preserved.)
-  """
-  def decode(bin, opts \\ []) do
-    %{version: {major, minor}, code: status_code, request_id: request_id} = parsed = parse(bin)
-    groups = for {tag, attributes} <- parsed.groups, do: {group(tag), attributes}
-    data = parsed.data
-
-    res = %Hippy.Response{
-      version: %Hippy.IPPVersion{major: major, minor: minor},
-      status_code: status_code,
-      request_id: request_id,
-      data: data
-    }
-
-    if Keyword.get(opts, :raw, false) do
-      put_groups(res, groups, &Function.identity/1, &Enum.concat/1)
-    else
-      %{res | status_code: decode_status_code(status_code)}
-      |> put_groups(groups, &interpret_group/1, &combine_groups/1)
-    end
-  end
+  @doc "Decodes an IPP message from its binary form. Same as `Hippy.Message.decode/1`."
+  def decode(bin), do: Hippy.Message.decode(bin)
 
   @doc false
   # The message exactly as sent: header fields, groups as {tag number, attribute tuples} with
@@ -85,20 +17,6 @@ defmodule Hippy.Decoder do
     %{version: {major, minor}, code: code, request_id: request_id, groups: groups, data: data}
   end
 
-  defp decode_status_code(value) do
-    case Hippy.IPP.StatusCode.decode(value) do
-      {:ok, status} -> status
-      {:error, _} -> value
-    end
-  end
-
-  defp put_groups(res, groups, each_group, combine) do
-    Enum.reduce(@groups, res, fn field, res ->
-      groups = for {^field, attributes} <- groups, do: each_group.(attributes)
-      Map.put(res, field, if(field in @repeated_groups, do: groups, else: combine.(groups)))
-    end)
-  end
-
   # Parsing: the response exactly as it was sent.
 
   defp parse_groups(<<0x03, data::binary>>, acc), do: {Enum.reverse(acc), data}
@@ -107,14 +25,6 @@ defmodule Hippy.Decoder do
     {attributes, rest} = parse_attributes(bin, [])
     parse_groups(rest, [{tag, attributes} | acc])
   end
-
-  defp group(tag) when tag in 0x01..0x0A do
-    {:ok, group} = Hippy.IPP.DelimiterTag.decode(tag)
-    group
-  end
-
-  # Group tags not assigned by IANA.
-  defp group(_tag), do: :unknown_attributes
 
   defp parse_attributes(<<tag, _::binary>> = bin, acc) when tag in 0x00..0x0F do
     {Enum.reverse(acc), bin}
@@ -217,9 +127,12 @@ defmodule Hippy.Decoder do
     {y, mo, d, h, min, s, ds, off_dir, off_h, off_min}
   end
 
-  # Interpretation.
+  # Interpretation, for Hippy.Message's maps.
 
-  defp interpret_group(attributes) do
+  @doc false
+  # Combines additional values into lists, converts values (Hippy.AttributeTransform) and
+  # collections, and merges attributes repeated within a group.
+  def interpret_group(attributes) do
     attributes
     |> Enum.reduce([], &add_attribute(&2, &1))
     |> Enum.reverse()
@@ -272,25 +185,6 @@ defmodule Hippy.Decoder do
             [value] -> {syntax, name, value}
             values -> {syntax, name, values}
           end
-      end
-    end)
-  end
-
-  # Other groups, such as operation attributes, are returned as one flat group. If a response has
-  # several, attributes with the same name are combined into a list with every group's values.
-  defp combine_groups([]), do: []
-  defp combine_groups([group]), do: group
-
-  defp combine_groups(groups) do
-    attributes = Enum.concat(groups)
-    by_name = Enum.group_by(attributes, &elem(&1, 1))
-
-    attributes
-    |> Enum.uniq_by(&elem(&1, 1))
-    |> Enum.map(fn {syntax, name, _value} = first ->
-      case by_name[name] do
-        [_single] -> first
-        all -> {syntax, name, Enum.flat_map(all, &List.wrap(elem(&1, 2)))}
       end
     end)
   end

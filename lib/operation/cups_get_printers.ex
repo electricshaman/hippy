@@ -23,7 +23,7 @@ defmodule Hippy.Operation.CupsGetPrinters do
       the bits. For example `printer_type: 0, printer_type_mask: 1` excludes classes.
     * `:charset`, `:language` and `:operation_attributes`, as for other operations.
 
-  The response has one group of printer attributes per result; use `Hippy.Response.printers/1`.
+  The response has one group of printer attributes per result; use `Hippy.Message.printers/1`.
   """
 
   @def_charset "utf-8"
@@ -79,7 +79,7 @@ end
 
 defimpl Hippy.Operation, for: Hippy.Operation.CupsGetPrinters do
   def build_request(op) do
-    Hippy.Request.new(
+    Hippy.Message.build_request(
       Hippy.IPP.Operation.cups_get_printers(),
       op,
       Hippy.Operation.CupsGetPrinters.filter_attributes(op)

@@ -4,13 +4,13 @@ defmodule Hippy.Server do
   @doc """
   Sends an operation to a printer and decodes the response.
 
-  Returns `{:ok, %Hippy.Response{}}`, or `{:error, %Hippy.Error{}}` when the printer returns an
+  Returns `{:ok, %Hippy.Message{}}`, or `{:error, %Hippy.Error{}}` when the printer returns an
   IPP error (a client-error or server-error status, such as `:client_error_not_found`). The
   error keeps the whole response.
 
   `{:ok, response}` can still mean the printer ignored or changed some attributes it doesn't
   support (status `:successful_ok_ignored_or_substituted_attributes`).
-  `Hippy.Response.unsupported/1` lists them. HTTP errors are `{:error, {:http_error, status, body}}`, and
+  `Hippy.Message.unsupported/1` lists them. HTTP errors are `{:error, {:http_error, status, body}}`, and
   transport errors are Req's exceptions (e.g. `{:error, %Req.TransportError{}}`).
 
   The request is sent to the operation's `printer_uri`, or `server_uri` for operations addressed
@@ -24,8 +24,6 @@ defmodule Hippy.Server do
       `req_options: [auth: {:basic, "user:pass"}]`.
     * `:endpoint` - the URL to send the request to, instead of the one derived from
       `printer_uri`.
-    * `:raw` - when `true`, return the response exactly as it was sent (see
-      `Hippy.Decoder.decode/2`).
 
   For compatibility, the second argument can also be the endpoint URL.
   """
@@ -70,7 +68,7 @@ defmodule Hippy.Server do
         |> put_target(uri, Keyword.get_lazy(opts, :target, fn -> target(uri, name) end))
 
       operation_id
-      |> Hippy.Request.new(op, [], data: Keyword.get(opts, :document, <<>>))
+      |> Hippy.Message.build_request(op, [], data: Keyword.get(opts, :document, <<>>))
       |> send_request(endpoint, opts)
     end
   end
@@ -108,17 +106,20 @@ defmodule Hippy.Server do
   defp put_target(op, _uri, :server), do: op
 
   @doc """
-  Sends a request to an endpoint URL and decodes the response.
+  Sends a request message to an endpoint URL and decodes the response.
 
-  Takes the same `:req_options` and `:raw` options as `send_operation/2`.
+  Takes the same `:req_options` option as `send_operation/2`.
   """
-  def send_request(%Hippy.Request{} = req, endpoint, opts \\ []) do
-    req = %{req | request_id: req.request_id || System.unique_integer([:positive, :monotonic])}
+  def send_request(%Hippy.Message{} = message, endpoint, opts \\ []) do
+    message = %{
+      message
+      | request_id: message.request_id || System.unique_integer([:positive, :monotonic])
+    }
 
-    case post(endpoint, Hippy.Encoder.encode(req), Keyword.get(opts, :req_options, [])) do
+    case post(endpoint, Hippy.Encoder.encode(message), Keyword.get(opts, :req_options, [])) do
       {:ok, %Req.Response{status: 200, body: body}} ->
         body
-        |> Hippy.Decoder.decode(Keyword.take(opts, [:raw]))
+        |> Hippy.Message.decode()
         |> Hippy.Error.from_response()
 
       {:ok, %Req.Response{status: status, body: body}} ->

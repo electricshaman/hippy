@@ -4,7 +4,7 @@ defmodule Hippy.AttributeGroupTest do
   alias Hippy.PrintResolution
 
   test "to_map produces operation_attributes map without syntax tuples" do
-    response = %Hippy.Response{
+    response = %{
       data: "",
       job_attributes: [],
       operation_attributes: [
@@ -20,7 +20,7 @@ defmodule Hippy.AttributeGroupTest do
   end
 
   test "to_map produces printer_attributes map without syntax tuples" do
-    response = %Hippy.Response{
+    response = %{
       data: "",
       job_attributes: [],
       operation_attributes: [
@@ -1235,7 +1235,7 @@ defmodule Hippy.AttributeGroupTest do
   end
 
   test "to_map produces job_attributes map without syntax tuples" do
-    response = %Hippy.Response{
+    response = %{
       data: "",
       job_attributes: [
         [

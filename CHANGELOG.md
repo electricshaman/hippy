@@ -2,13 +2,29 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- Requests and responses are `Hippy.Message` structs, holding the message exactly as it's sent
+  (#47). `Hippy.Request` and the `Hippy.Response` struct are removed:
+  - `Hippy.send_operation` returns `{:ok, %Hippy.Message{}}`, and `Hippy.Error.response` is a
+    message. Read attributes with `Hippy.Message.job/1`, `jobs/1`, `printer/1`, `printers/1`,
+    `operation_attributes/1`, `unsupported/1`, `group/2` and `groups/2`, which return maps as
+    before, and the status with `Hippy.Message.status/1`.
+  - Operations' `Hippy.Operation.build_request/1` returns a message, built with
+    `Hippy.Message.build_request/4`.
+  - The `raw:` option is removed: a message is always exactly what was sent.
+  - `Hippy.Decoder.decode/1` returns a message, and `Hippy.Encoder.encode/1` takes one.
+  - `Hippy.Request.new/4` and the `Hippy.Response` map helpers still work for this release, but
+    are deprecated.
+  - `groups:` takes the message's group names (`:printer`, `:subscription`, ...); the old
+    `:printer_attributes`-style names still work.
+
 ### Added
 
 - `Hippy.Message`, one struct for IPP requests and responses, holding a message exactly as it's
   sent: groups in order (repeated groups and tags IANA hasn't assigned included), each
   attribute as `{name, [{syntax, value}, ...]}`, and values as on the wire.
-  `Hippy.Message.decode/1` and `encode/1` round-trip any message byte for byte. (Step 1 of #47;
-  the rest of Hippy moves to it next.)
+  `Hippy.Message.decode/1` and `encode/1` round-trip any message byte for byte.
 
 ## 0.6.0 (2026-11-07)
 

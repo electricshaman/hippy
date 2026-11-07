@@ -36,7 +36,8 @@ end
 
 defimpl Hippy.Operation, for: Hippy.Operation.CancelJob do
   def build_request(op) do
-    Hippy.Request.new(Hippy.IPP.Operation.cancel_job(), op, [
+    Hippy.IPP.Operation.cancel_job()
+    |> Hippy.Message.build_request(op, [
       {:integer, "job-id", op.job_id}
     ])
   end

@@ -1,81 +1,23 @@
 defmodule Hippy.Response do
-  @moduledoc """
-  A decoded IPP response.
+  @moduledoc false
 
-  Attributes are kept as `{syntax, name, value}` tuples in the order the printer sent them.
-  `job_attributes` is a list of groups, one per job, and `printer_attributes` is a list of groups,
-  one per printer (Get-Printer-Attributes returns one, CUPS-Get-Printers one per printer). So are
-  `subscription_attributes`, `event_notification_attributes`, `resource_attributes` and
-  `document_attributes`.
-  `unknown_attributes` holds attributes from group tags not assigned by IANA. The functions in this module return
-  attributes as maps of names to values instead:
+  # Responses are Hippy.Message structs since 0.7. These helpers are kept for one release.
 
-      {:ok, res} = Hippy.send_operation(PrintJob.new(uri, doc))
-      Hippy.Response.job(res)["job-id"]
-  """
+  @deprecated "Use Hippy.Message.job/1 instead"
+  defdelegate job(message), to: Hippy.Message
 
-  alias Hippy.AttributeGroup
+  @deprecated "Use Hippy.Message.jobs/1 instead"
+  defdelegate jobs(message), to: Hippy.Message
 
-  defstruct version: nil,
-            status_code: nil,
-            request_id: nil,
-            operation_attributes: [],
-            job_attributes: [],
-            printer_attributes: [],
-            unsupported_attributes: [],
-            subscription_attributes: [],
-            event_notification_attributes: [],
-            resource_attributes: [],
-            document_attributes: [],
-            system_attributes: [],
-            unknown_attributes: [],
-            data: nil
+  @deprecated "Use Hippy.Message.printer/1 instead"
+  defdelegate printer(message), to: Hippy.Message
 
-  @doc """
-  Returns the job in the response as a map, or `nil` if there is none.
+  @deprecated "Use Hippy.Message.printers/1 instead"
+  defdelegate printers(message), to: Hippy.Message
 
-  For responses about a single job, such as Print-Job and Get-Job-Attributes. When the response
-  has several jobs, returns the first one.
-  """
-  def job(%__MODULE__{job_attributes: [first | _]}), do: AttributeGroup.to_map(first)
-  def job(%__MODULE__{}), do: nil
+  @deprecated "Use Hippy.Message.operation_attributes/1 instead"
+  def operation(message), do: Hippy.Message.operation_attributes(message)
 
-  @doc "Returns each job in the response as a map, such as for Get-Jobs."
-  def jobs(%__MODULE__{job_attributes: jobs}), do: Enum.map(jobs, &AttributeGroup.to_map/1)
-
-  @doc """
-  Returns the printer in the response as a map, or `nil` if there is none.
-
-  For responses about a single printer, such as Get-Printer-Attributes. When the response has
-  several printers, returns the first one.
-  """
-  def printer(%__MODULE__{printer_attributes: [first | _]}), do: AttributeGroup.to_map(first)
-  def printer(%__MODULE__{}), do: nil
-
-  @doc "Returns each printer in the response as a map, such as for CUPS-Get-Printers."
-  def printers(%__MODULE__{printer_attributes: printers}),
-    do: Enum.map(printers, &AttributeGroup.to_map/1)
-
-  @doc "Returns the operation attributes as a map (e.g. `status-message`)."
-  def operation(%__MODULE__{operation_attributes: attributes}),
-    do: AttributeGroup.to_map(attributes)
-
-  @doc """
-  Returns the attributes the printer didn't support as a map, with the values that were sent.
-
-  A printer can accept a request but ignore or change attributes it doesn't support (status
-  `:successful_ok_ignored_or_substituted_attributes`), so check this when the settings matter.
-  It's empty when every attribute was applied.
-  """
-  def unsupported(%__MODULE__{unsupported_attributes: attributes}),
-    do: AttributeGroup.to_map(attributes)
-
-  @behaviour Access
-
-  # Access behaviour
-
-  defdelegate fetch(term, key), to: Map
-  defdelegate get(structure, key, default), to: Map
-  defdelegate get_and_update(data, key, function), to: Map
-  defdelegate pop(data, key), to: Map
+  @deprecated "Use Hippy.Message.unsupported/1 instead"
+  defdelegate unsupported(message), to: Hippy.Message
 end

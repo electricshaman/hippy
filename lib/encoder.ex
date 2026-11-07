@@ -3,7 +3,6 @@ defmodule Hippy.Encoder do
   Functions for handling binary encoding of an IPP request.
   """
 
-  alias Hippy.Request
   alias Hippy.IPP.{DelimiterTag, ResolutionUnit, ValueTag}
 
   @string_syntaxes [
@@ -28,9 +27,11 @@ defmodule Hippy.Encoder do
   ]
 
   @doc """
-  Encodes an IPP request into its binary form.
+  Encodes an IPP message (`Hippy.Message`) into its binary form.
 
-  Attributes are `{syntax, name, value}` tuples, in the same form `Hippy.Decoder` returns them:
+  A message's attributes are `{name, [{syntax, value}, ...]}`. Values can be in their wire form
+  (as `Hippy.Message.decode/1` returns them) or one of these, as can the `{syntax, name, value}`
+  tuples given to `Hippy.Message.build_request/4`:
 
     * `:integer` and `:enum` take integers, and `:boolean` takes booleans.
     * `:keyword`, `:uri`, `:mime_media_type`, `:text_without_language`, `:name_without_language`
@@ -46,8 +47,8 @@ defmodule Hippy.Encoder do
   A list value is encoded as a multi-valued attribute, as is `{{:set1, syntax}, name, values}`.
   Raises `ArgumentError` for a value that can't be encoded.
 
-  The request's `data` (the document) is a binary, or an `Enumerable` of binaries such as
-  `File.stream!/2`. For a binary the whole request is returned as a binary. For an enumerable
+  The message's `data` (the document) is a binary, or an `Enumerable` of binaries such as
+  `File.stream!/2`. For a binary the whole message is returned as a binary. For an enumerable
   it's returned as a stream (the encoded attributes, then the document's chunks as they're
   read), so the document is never all in memory.
   """
@@ -65,64 +66,20 @@ defmodule Hippy.Encoder do
   end
 
   def encode(%Hippy.Message{version: {major, minor}} = message) do
-    groups =
-      for {tag, attributes} <- message.groups, into: <<>> do
-        for attribute <- attributes, into: <<Hippy.Message.tag_number(tag)::8>> do
-          encode_message_attribute(attribute)
-        end
-      end
+    groups = for group <- message.groups, into: <<>>, do: encode_message_group(group)
 
     <<major::8-signed, minor::8-signed, message.code::16-signed, message.request_id::32-signed,
       groups::binary, DelimiterTag.end_of_attributes()::8-signed, message.data::binary>>
   end
 
-  def encode(%Request{data: data} = req) when not is_binary(data) do
-    if Enumerable.impl_for(data) == nil do
-      raise ArgumentError,
-            "data must be a binary or an Enumerable of binaries, got: #{inspect(data)}"
-    end
-
-    Stream.concat([encode(%{req | data: <<>>})], data)
-  end
-
-  def encode(%Request{} = req) do
-    operation_attributes_bin =
-      for attribute <- req.operation_attributes, into: request_header(req) do
-        encode_attribute(attribute)
-      end
-
-    job_attributes_bin =
-      case req.job_attributes do
-        [] ->
-          ""
-
-        attributes ->
-          for attribute <- attributes, into: <<DelimiterTag.job_attributes()::8-signed>> do
-            encode_attribute(attribute)
-          end
-      end
-
-    groups_bin = for group <- req.groups, into: <<>>, do: encode_group(group)
-
-    <<operation_attributes_bin::binary, job_attributes_bin::binary, groups_bin::binary,
-      DelimiterTag.end_of_attributes()::8-signed, req.data::binary>>
-  end
-
-  defp encode_group({tag, attributes})
-       when tag not in [:operation_attributes, :end_of_attributes] do
-    case DelimiterTag.encode(tag) do
-      {:ok, value} ->
-        for attribute <- attributes, into: <<value::8>>, do: encode_attribute(attribute)
-
-      {:error, _} ->
-        raise ArgumentError, "unknown attribute group #{inspect(tag)}"
+  defp encode_message_group({tag, attributes}) when is_list(attributes) do
+    for attribute <- attributes, into: <<Hippy.Message.tag_number(tag)::8>> do
+      encode_message_attribute(attribute)
     end
   end
 
-  defp encode_group(group) do
-    raise ArgumentError,
-          "invalid attribute group #{inspect(group)} (operation attributes always come first, " <>
-            "in operation_attributes)"
+  defp encode_message_group(group) do
+    raise ArgumentError, "invalid attribute group #{inspect(group)}, expected {tag, attributes}"
   end
 
   # A message attribute, {name, [{syntax, value}, ...]}: the first value carries the name, and the
@@ -151,10 +108,10 @@ defmodule Hippy.Encoder do
     encode_attribute({syntax, name, values})
   end
 
-  # An additional value of the previous attribute, as decoded with raw: true.
+  # An additional value of the previous attribute (a tuple with a nil name).
   defp encode_attribute({syntax, nil, value}), do: encode_attribute({syntax, "", value})
 
-  # A collection given as an ordered list of {member, value}, as decoded with raw: true.
+  # A collection given as an ordered list of {member, value}, as in a Hippy.Message.
   defp encode_attribute({:collection, name, [{member, _} | _] = members})
        when is_binary(name) and is_binary(member) do
     <<value_tag(:collection)::8, byte_size(name)::16, name::binary,
@@ -219,7 +176,7 @@ defmodule Hippy.Encoder do
       rem(abs(offset), 60)::8>>
   end
 
-  # Dates, resolutions and ranges as decoded with raw: true.
+  # Dates, resolutions and ranges in their wire form, as in a Hippy.Message.
   defp encode_value(:datetime, _name, {y, mo, d, h, min, s, ds, dir, off_h, off_min})
        when dir in ["+", "-"] do
     <<11::16, y::16, mo::8, d::8, h::8, min::8, s::8, ds::8, dir::binary, off_h::8, off_min::8>>
@@ -269,15 +226,6 @@ defmodule Hippy.Encoder do
   defp encode_member(name, member, value) do
     raise ArgumentError,
           "invalid value #{inspect(value)} for member #{inspect(member)} of #{inspect(name)}"
-  end
-
-  defp request_header(%Request{request_id: nil}) do
-    raise ArgumentError, "request_id is required (Hippy.Server assigns one when sending)"
-  end
-
-  defp request_header(req) do
-    <<req.version.major::8-signed, req.version.minor::8-signed, req.operation_id::16-signed,
-      req.request_id::32-signed, DelimiterTag.operation_attributes()::8-signed>>
   end
 
   defp value_tag(:collection), do: ValueTag.beg_collection()

@@ -20,8 +20,9 @@ defmodule Hippy.EnumTest do
         end
       end
 
-    Decoder.decode(<<1, 1, 0, 0, 0, 0, 0, 1>> <> groups <> <<0x03>>).printer_attributes
-    |> Hippy.AttributeGroup.to_map()
+    (<<1, 1, 0, 0, 0, 0, 0, 1>> <> groups <> <<0x03>>)
+    |> Decoder.decode()
+    |> Hippy.Message.printer()
   end
 
   defp put_enums(enums) do

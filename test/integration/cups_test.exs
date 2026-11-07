@@ -10,7 +10,7 @@ defmodule Hippy.Integration.CupsTest do
 
   import ExUnit.CaptureLog
 
-  alias Hippy.{AttributeGroup, Response}
+  alias Hippy.Message
 
   alias Hippy.Operation.{
     CancelJob,
@@ -71,9 +71,9 @@ defmodule Hippy.Integration.CupsTest do
             {"rejecting", :idle, false}
           ] do
         res = send!(GetPrinterAttributes.new(printer(http, queue)))
-        attrs = Response.printer(res)
+        attrs = Message.printer(res)
 
-        assert res.status_code == :successful_ok
+        assert Message.status(res) == :successful_ok
         assert map_size(attrs) > 50
         assert attrs["printer-state"] == state
         assert attrs["printer-is-accepting-jobs"] == accepting
@@ -81,53 +81,44 @@ defmodule Hippy.Integration.CupsTest do
         assert :portrait in attrs["orientation-requested-supported"]
 
         # Every enum value CUPS sends is one Hippy knows.
-        [printer] = res.printer_attributes
+        {:printer, printer} = List.keyfind(res.groups, :printer, 0)
 
-        for {:enum, name, value} <- printer, v <- List.wrap(value) do
-          refute is_integer(v), "#{name} has an undecoded value #{v}"
+        for {name, values} <- printer, {:enum, value} <- values do
+          assert {:ok, _} = Hippy.IPP.Enum.decode(name, value),
+                 "#{name} has an unknown value #{value}"
         end
       end
     end
 
-    test "raw responses re-encode to the same bytes", %{http: http} do
+    test "responses decode exactly and re-encode to the same bytes", %{http: http} do
       for queue <- ["raw", "filtered", "held_jobs"] do
         uri = printer(http, queue)
 
-        req =
-          Hippy.Operation.build_request(GetPrinterAttributes.new(uri)) |> Map.put(:request_id, 1)
+        body =
+          GetPrinterAttributes.new(uri)
+          |> Hippy.Operation.build_request()
+          |> Map.put(:request_id, 1)
+          |> Hippy.Encoder.encode()
 
         %Req.Response{status: 200, body: bin} =
           Req.post!(uri,
-            body: Hippy.Encoder.encode(req),
+            body: body,
             headers: [{"content-type", "application/ipp"}],
             decode_body: false
           )
 
-        raw = Hippy.Decoder.decode(bin, raw: true)
-        [printer] = raw.printer_attributes
-
-        reencoded =
-          Hippy.Encoder.encode(%Hippy.Request{
-            version: raw.version,
-            operation_id: raw.status_code,
-            request_id: raw.request_id,
-            operation_attributes: raw.operation_attributes,
-            groups: [{:printer_attributes, printer}],
-            data: raw.data
-          })
-
-        assert reencoded == bin, "#{queue} didn't round-trip"
-        assert Hippy.Message.encode(Hippy.Message.decode(bin)) == bin
+        assert bin |> Message.decode() |> Message.encode() == bin, "#{queue} didn't round-trip"
       end
 
-      {:ok, raw} = Hippy.send_operation(GetPrinterAttributes.new(printer(http, "raw")), raw: true)
-      assert raw.status_code == 0
-      assert {:enum, "printer-state", 3} in hd(raw.printer_attributes)
+      res = send!(GetPrinterAttributes.new(printer(http, "raw")))
+      assert res.code == 0
+      {:printer, printer} = List.keyfind(res.groups, :printer, 0)
+      assert {"printer-state", [enum: 3]} in printer
     end
 
     test "accepts an ipp:// printer URI", %{http: http} do
       uri = String.replace(printer(http, "raw"), "http://", "ipp://")
-      assert send!(GetPrinterAttributes.new(uri)).status_code == :successful_ok
+      assert Message.status(send!(GetPrinterAttributes.new(uri))) == :successful_ok
     end
 
     test "missing queue returns not found", %{http: http} do
@@ -140,7 +131,7 @@ defmodule Hippy.Integration.CupsTest do
       statuses =
         1..25
         |> Task.async_stream(
-          fn _ -> send!(GetPrinterAttributes.new(printer(http, "raw"))).status_code end,
+          fn _ -> Message.status(send!(GetPrinterAttributes.new(printer(http, "raw")))) end,
           max_concurrency: 25
         )
         |> Enum.map(fn {:ok, status} -> status end)
@@ -152,7 +143,7 @@ defmodule Hippy.Integration.CupsTest do
   describe "CUPS server operations" do
     @queues ~w(filtered held_cancel held_jobs raw rejecting secure)
 
-    defp names(res), do: Enum.map(Response.printers(res), & &1["printer-name"])
+    defp names(res), do: Enum.map(Message.printers(res), & &1["printer-name"])
 
     test "CUPS-Get-Printers returns each printer and class separately", %{http: http} do
       res =
@@ -160,9 +151,9 @@ defmodule Hippy.Integration.CupsTest do
           CupsGetPrinters.new("#{http}/", requested_attributes: ["printer-name", "printer-state"])
         )
 
-      states = Map.new(Response.printers(res), &{&1["printer-name"], &1["printer-state"]})
+      states = Map.new(Message.printers(res), &{&1["printer-name"], &1["printer-state"]})
 
-      assert res.status_code == :successful_ok
+      assert Message.status(res) == :successful_ok
       assert names(res) == Enum.sort(["raw_class" | @queues])
       assert states["held_jobs"] == :stopped
       assert states["raw"] == :idle
@@ -181,49 +172,46 @@ defmodule Hippy.Integration.CupsTest do
       res = send!(CupsGetClasses.new("#{http}/"))
 
       assert [%{"printer-name" => "raw_class", "member-names" => ["raw", "filtered"]}] =
-               Response.printers(res)
+               Message.printers(res)
     end
 
     test "CUPS-Get-Default returns the default printer", %{http: http} do
       res = send!(CupsGetDefault.new("#{http}/", requested_attributes: ["printer-name"]))
-      assert Response.printer(res) == %{"printer-name" => "raw"}
+      assert Message.printer(res) == %{"printer-name" => "raw"}
     end
   end
 
   describe "attribute groups in requests" do
-    defp base_attributes,
-      do: [
-        {:charset, "attributes-charset", "utf-8"},
-        {:natural_language, "attributes-natural-language", "en"}
-      ]
+    @base %{charset: "utf-8", language: "en"}
 
     test "CUPS-Add-Modify-Printer creates a queue from a printer group, as an administrator",
          ctx do
       name = "created_#{System.unique_integer([:positive])}"
       on_exit(fn -> docker(["exec", ctx.container, "lpadmin", "-x", name]) end)
 
-      req = %Hippy.Request{
-        operation_id: Hippy.IPP.Operation.cups_add_modify_printer(),
-        operation_attributes:
-          base_attributes() ++ [{:uri, "printer-uri", "ipp://localhost/printers/#{name}"}],
-        groups: [
-          {:printer_attributes,
-           [
-             {:uri, "device-uri", "file:///dev/null"},
-             {:text_without_language, "printer-location", "Front desk"},
-             {:text_without_language, "printer-info", "Made by Hippy"},
-             {:boolean, "printer-is-accepting-jobs", true},
-             {:enum, "printer-state", 3}
-           ]}
-        ]
-      }
+      req =
+        Hippy.IPP.Operation.cups_add_modify_printer()
+        |> Message.build_request(
+          @base,
+          [{:uri, "printer-uri", "ipp://localhost/printers/#{name}"}],
+          groups: [
+            {:printer,
+             [
+               {:uri, "device-uri", "file:///dev/null"},
+               {:text_without_language, "printer-location", "Front desk"},
+               {:text_without_language, "printer-info", "Made by Hippy"},
+               {:boolean, "printer-is-accepting-jobs", true},
+               {:enum, "printer-state", 3}
+             ]}
+          ]
+        )
 
       admin = "#{ctx.https}/admin/"
 
       assert {:error, {:http_error, 401, _}} = Hippy.Server.send_request(req, admin, @anonymous)
-      assert {:ok, %{status_code: :successful_ok}} = Hippy.Server.send_request(req, admin, @admin)
+      assert {:ok, %Message{code: 0}} = Hippy.Server.send_request(req, admin, @admin)
 
-      attrs = Response.printer(send!(GetPrinterAttributes.new(printer(ctx.http, name))))
+      attrs = Message.printer(send!(GetPrinterAttributes.new(printer(ctx.http, name))))
       assert attrs["printer-location"] == "Front desk"
       assert attrs["printer-info"] == "Made by Hippy"
       assert attrs["printer-is-accepting-jobs"] == true
@@ -247,13 +235,13 @@ defmodule Hippy.Integration.CupsTest do
         }
       }
 
-      req = Hippy.Request.new(Hippy.IPP.Operation.cups_add_modify_printer(), op)
-      assert [{:printer_attributes, _}] = req.groups
+      req = Hippy.IPP.Operation.cups_add_modify_printer() |> Message.build_request(op)
+      assert Enum.map(req.groups, &elem(&1, 0)) == [:operation, :printer]
 
-      assert {:ok, %{status_code: :successful_ok}} =
+      assert {:ok, %Message{code: 0}} =
                Hippy.Server.send_request(req, "#{ctx.https}/admin/", @admin)
 
-      attrs = Response.printer(send!(GetPrinterAttributes.new(printer(ctx.http, name))))
+      attrs = Message.printer(send!(GetPrinterAttributes.new(printer(ctx.http, name))))
       assert attrs["printer-location"] == "Back office"
       assert attrs["printer-info"] == "Inferred by Hippy"
       assert attrs["device-uri"] == URI.parse("file:///dev/null")
@@ -261,49 +249,38 @@ defmodule Hippy.Integration.CupsTest do
 
     test "Create-Printer-Subscriptions creates one subscription per group", %{http: http} do
       subscription = fn events ->
-        {:subscription_attributes,
+        {:subscription,
          [{:keyword, "notify-pull-method", "ippget"}, {:keyword, "notify-events", events}]}
       end
 
       uri = printer(http, "raw")
 
-      req = %Hippy.Request{
-        operation_id: Hippy.IPP.Operation.create_printer_subscription(),
-        operation_attributes:
-          base_attributes() ++ [{:uri, "printer-uri", String.replace(uri, "http", "ipp")}],
-        groups: [subscription.(["printer-state-changed"]), subscription.(["job-completed"])]
-      }
+      req =
+        Hippy.IPP.Operation.create_printer_subscription()
+        |> Message.build_request(Map.put(@base, :printer_uri, uri), [],
+          groups: [subscription.(["printer-state-changed"]), subscription.(["job-completed"])]
+        )
 
       {:ok, res} = Hippy.Server.send_request(req, uri)
-      assert res.status_code == :successful_ok
+      assert Message.status(res) == :successful_ok
 
-      ids =
-        Enum.map(
-          res.subscription_attributes,
-          &AttributeGroup.to_map(&1)["notify-subscription-id"]
-        )
+      ids = res |> Message.groups(:subscription) |> Enum.map(& &1["notify-subscription-id"])
 
       assert length(ids) == 2 and Enum.all?(ids, &is_integer/1)
 
       # Each subscription got its own group's events.
-      list = %Hippy.Request{
-        operation_id: Hippy.IPP.Operation.get_subscriptions(),
-        operation_attributes:
-          base_attributes() ++
-            [
-              {:uri, "printer-uri", String.replace(uri, "http", "ipp")},
-              {{:set1, :keyword}, "requested-attributes",
-               ["notify-subscription-id", "notify-events"]}
-            ]
-      }
+      list =
+        Hippy.IPP.Operation.get_subscriptions()
+        |> Message.build_request(Map.put(@base, :printer_uri, uri), [
+          {{:set1, :keyword}, "requested-attributes", ["notify-subscription-id", "notify-events"]}
+        ])
 
       {:ok, res} = Hippy.Server.send_request(list, uri)
 
       events =
-        Map.new(res.subscription_attributes, fn group ->
-          map = AttributeGroup.to_map(group)
-          {map["notify-subscription-id"], map["notify-events"]}
-        end)
+        res
+        |> Message.groups(:subscription)
+        |> Map.new(&{&1["notify-subscription-id"], &1["notify-events"]})
 
       assert events[Enum.at(ids, 0)] == ["printer-state-changed"]
       assert events[Enum.at(ids, 1)] == ["job-completed"]
@@ -313,7 +290,7 @@ defmodule Hippy.Integration.CupsTest do
       op =
         PrintJob.new(printer(http, "raw"), pdf(),
           groups: [
-            {:subscription_attributes,
+            {:subscription,
              [
                {:keyword, "notify-pull-method", "ippget"},
                {:keyword, "notify-events", "job-completed"}
@@ -322,8 +299,8 @@ defmodule Hippy.Integration.CupsTest do
         )
 
       res = send!(op)
-      assert res.status_code == :successful_ok
-      assert [[{:integer, "notify-subscription-id", id}]] = res.subscription_attributes
+      assert Message.status(res) == :successful_ok
+      assert [%{"notify-subscription-id" => id}] = Message.groups(res, :subscription)
       assert is_integer(id)
     end
   end
@@ -338,7 +315,7 @@ defmodule Hippy.Integration.CupsTest do
           "copies" => 2
         })
 
-      assert res.status_code == :successful_ok
+      assert Message.status(res) == :successful_ok
 
       {:error, error} =
         Hippy.send_operation(uri, :validate_job, %{"document-format" => "application/x-nope"})
@@ -355,28 +332,28 @@ defmodule Hippy.Integration.CupsTest do
           [document: pdf()] ++ @user
         )
 
-      assert res.status_code == :successful_ok
+      assert Message.status(res) == :successful_ok
 
       # CUPS's job-uri names its own host, so address the job through the test's port.
-      job_uri = "#{https}/jobs/#{Response.job(res)["job-id"]}"
+      job_uri = "#{https}/jobs/#{Message.job(res)["job-id"]}"
 
       state = fn ->
         {:ok, res} = Hippy.send_operation(job_uri, :get_job_attributes, %{}, @user)
-        Response.job(res)["job-state"]
+        Message.job(res)["job-state"]
       end
 
       assert state.() == :pending
 
       {:ok, res} = Hippy.send_operation(job_uri, :hold_job, %{}, @user)
-      assert res.status_code == :successful_ok
+      assert Message.status(res) == :successful_ok
       assert state.() == :pending_held
 
       {:ok, res} = Hippy.send_operation(job_uri, :release_job, %{}, @user)
-      assert res.status_code == :successful_ok
+      assert Message.status(res) == :successful_ok
       assert state.() == :pending
 
       {:ok, res} = Hippy.send_operation(job_uri, :cancel_job, %{}, @user)
-      assert res.status_code == :successful_ok
+      assert Message.status(res) == :successful_ok
       assert state.() == :canceled
     end
 
@@ -386,14 +363,14 @@ defmodule Hippy.Integration.CupsTest do
           "requested-attributes" => ["printer-name"]
         })
 
-      assert "raw" in Enum.map(Response.printers(res), & &1["printer-name"])
+      assert "raw" in Enum.map(Message.printers(res), & &1["printer-name"])
 
       {:ok, res} =
         Hippy.send_operation("#{http}/", :cups_get_default, %{
           "requested-attributes" => ["printer-name"]
         })
 
-      assert Response.printer(res)["printer-name"] == "raw"
+      assert Message.printer(res)["printer-name"] == "raw"
     end
 
     test "administration: add, pause, resume and delete a printer", ctx do
@@ -405,7 +382,7 @@ defmodule Hippy.Integration.CupsTest do
       queue = printer(ctx.https, name)
 
       printer_state = fn ->
-        Response.printer(send!(GetPrinterAttributes.new(printer(ctx.http, name))))[
+        Message.printer(send!(GetPrinterAttributes.new(printer(ctx.http, name))))[
           "printer-state"
         ]
       end
@@ -422,24 +399,24 @@ defmodule Hippy.Integration.CupsTest do
           admin
         )
 
-      assert res.status_code == :successful_ok
+      assert Message.status(res) == :successful_ok
 
-      assert Response.printer(send!(GetPrinterAttributes.new(printer(ctx.http, name))))[
+      assert Message.printer(send!(GetPrinterAttributes.new(printer(ctx.http, name))))[
                "printer-info"
              ] ==
                "Made by Hippy.send_operation"
 
-      {:ok, %{status_code: :successful_ok}} =
+      {:ok, %Message{code: 0}} =
         Hippy.send_operation(queue, :pause_printer, %{}, @admin)
 
       assert printer_state.() == :stopped
 
-      {:ok, %{status_code: :successful_ok}} =
+      {:ok, %Message{code: 0}} =
         Hippy.send_operation(queue, :resume_printer, %{}, @admin)
 
       assert printer_state.() == :idle
 
-      {:ok, %{status_code: :successful_ok}} =
+      {:ok, %Message{code: 0}} =
         Hippy.send_operation(queue, :cups_delete_printer, %{"printer-uri" => printer_uri}, admin)
 
       assert ipp_error!(GetPrinterAttributes.new(printer(ctx.http, name))).status ==
@@ -543,7 +520,7 @@ defmodule Hippy.Integration.CupsTest do
       assert error.status == :client_error_document_format_not_supported
       res = error.response
 
-      assert Response.unsupported(res) == %{"document-format" => "application/x-nope"}
+      assert Message.unsupported(res) == %{"document-format" => "application/x-nope"}
     end
 
     test "plain text is auto-typed and converted by CUPS", %{http: http} do
@@ -628,7 +605,7 @@ defmodule Hippy.Integration.CupsTest do
       id = print!(PrintJob.new(uri, pdf(), job_name: "Mine"), @user)
       assert job_attributes!(uri, id, @user)["job-originating-user-name"] == "hippy"
 
-      assert send!(CancelJob.new(uri, id), @user).status_code == :successful_ok
+      assert Message.status(send!(CancelJob.new(uri, id), @user)) == :successful_ok
       assert job_attributes!(uri, id, @user)["job-state"] == :canceled
       assert ipp_error!(CancelJob.new(uri, id), @user).status == :client_error_not_possible
     end
@@ -641,7 +618,7 @@ defmodule Hippy.Integration.CupsTest do
 
       assert {:error, {:http_error, 401, _}} = Hippy.send_operation(op, @anonymous)
       assert {:error, {:http_error, 401, _}} = Hippy.send_operation(op, wrong)
-      assert send!(op, @user).status_code == :successful_ok
+      assert Message.status(send!(op, @user)) == :successful_ok
       assert is_integer(print!(PrintJob.new(op.printer_uri, pdf()), @user))
     end
 
@@ -656,7 +633,7 @@ defmodule Hippy.Integration.CupsTest do
 
       for {opts, result} <- results do
         if opts == @user do
-          assert {:ok, %Hippy.Response{status_code: :successful_ok}} = result
+          assert {:ok, %Message{code: 0}} = result
         else
           assert {:error, {:http_error, 401, _}} = result
         end
@@ -666,7 +643,7 @@ defmodule Hippy.Integration.CupsTest do
     test "ipps:// printer URI", %{https: https} do
       uri = String.replace(printer(https, "secure"), "https://", "ipps://")
 
-      assert send!(GetPrinterAttributes.new(uri), @user).status_code == :successful_ok
+      assert Message.status(send!(GetPrinterAttributes.new(uri), @user)) == :successful_ok
     end
 
     test "self-signed certificate is rejected when verification is on", %{https: https} do
@@ -693,7 +670,7 @@ defmodule Hippy.Integration.CupsTest do
         assert to_string(msg) =~ "selfsigned_peer"
       end)
 
-      assert send!(op, tls_options(verify_fun: {pinning_verify_fun(pinned), nil})).status_code ==
+      assert Message.status(send!(op, tls_options(verify_fun: {pinning_verify_fun(pinned), nil}))) ==
                :successful_ok
 
       capture_log(fn ->
@@ -757,7 +734,7 @@ defmodule Hippy.Integration.CupsTest do
   end
 
   defp send!(op, opts \\ []) do
-    {:ok, %Hippy.Response{} = res} = Hippy.send_operation(op, opts)
+    {:ok, %Message{} = res} = Hippy.send_operation(op, opts)
     res
   end
 
@@ -768,17 +745,17 @@ defmodule Hippy.Integration.CupsTest do
 
   defp print!(op, opts \\ []) do
     res = send!(op, opts)
-    assert res.status_code == :successful_ok
-    Response.job(res)["job-id"]
+    assert Message.status(res) == :successful_ok
+    Message.job(res)["job-id"]
   end
 
   defp job_attributes!(uri, id, opts \\ []) do
-    Response.job(send!(GetJobAttributes.new(uri, id), opts))
+    Message.job(send!(GetJobAttributes.new(uri, id), opts))
   end
 
   defp job_ids(uri, which) do
     send!(GetJobs.new(uri, which_jobs: which))
-    |> Response.jobs()
+    |> Message.jobs()
     |> Enum.map(& &1["job-id"])
     |> Enum.sort()
   end

@@ -16,14 +16,20 @@ defmodule Hippy.SendOperationTest do
     :ok
   end
 
-  # The request as sent, decoded exactly (requests and responses share a layout, so the
-  # operation id is in status_code).
+  # The request as sent, decoded exactly.
   defp sent do
     assert_received {:request, path, body}
-    {path, Hippy.Decoder.decode(body, raw: true)}
+    {path, Hippy.Message.decode(body)}
   end
 
-  defp names(attributes), do: Enum.map(attributes, &elem(&1, 1))
+  defp group(%Hippy.Message{groups: groups}, tag) do
+    case List.keyfind(groups, tag, 0) do
+      {^tag, attributes} -> attributes
+      nil -> []
+    end
+  end
+
+  defp names(attributes), do: Enum.map(attributes, &elem(&1, 0))
 
   test "sends any operation by name, placing attributes by inference" do
     {:ok, _} =
@@ -34,17 +40,17 @@ defmodule Hippy.SendOperationTest do
 
     {path, req} = sent()
     assert path == "/printers/p"
-    assert req.status_code == Hippy.IPP.Operation.validate_job()
+    assert Hippy.Message.operation(req) == :validate_job
 
-    assert names(req.operation_attributes) == [
+    assert names(group(req, :operation)) == [
              "attributes-charset",
              "attributes-natural-language",
              "printer-uri",
              "document-format"
            ]
 
-    assert {:uri, "printer-uri", @printer} in req.operation_attributes
-    assert req.job_attributes == [[{:integer, "copies", 2}]]
+    assert {"printer-uri", [uri: @printer]} in group(req, :operation)
+    assert group(req, :job) == [{"copies", [integer: 2]}]
   end
 
   test "takes operation ids, documents and explicit attributes" do
@@ -55,9 +61,9 @@ defmodule Hippy.SendOperationTest do
       )
 
     {_path, req} = sent()
-    assert req.status_code == 0x0002
-    assert {:name_without_language, "job-name", "Report"} in req.operation_attributes
-    assert req.job_attributes == [[{:keyword, "x-acme-finish", "matte"}]]
+    assert req.code == 0x0002
+    assert {"job-name", [name_without_language: "Report"]} in group(req, :operation)
+    assert group(req, :job) == [{"x-acme-finish", [keyword: "matte"]}]
     assert req.data == "%PDF"
   end
 
@@ -67,7 +73,7 @@ defmodule Hippy.SendOperationTest do
     {path, req} = sent()
     assert path == "/"
 
-    assert names(req.operation_attributes) == [
+    assert names(group(req, :operation)) == [
              "attributes-charset",
              "attributes-natural-language",
              "limit"
@@ -79,14 +85,14 @@ defmodule Hippy.SendOperationTest do
 
     {path, req} = sent()
     assert path == "/jobs/12"
-    assert {:uri, "job-uri", "ipp://localhost:631/jobs/12"} in req.operation_attributes
-    refute "printer-uri" in names(req.operation_attributes)
+    assert {"job-uri", [uri: "ipp://localhost:631/jobs/12"]} in group(req, :operation)
+    refute "printer-uri" in names(group(req, :operation))
   end
 
   test "the target can be given, or replaced by an attribute" do
     {:ok, _} = Hippy.send_operation(@printer, :get_printer_attributes, %{}, target: :server)
     {_path, req} = sent()
-    refute "printer-uri" in names(req.operation_attributes)
+    refute "printer-uri" in names(group(req, :operation))
 
     other = "ipp://localhost:631/printers/other"
 
@@ -98,8 +104,8 @@ defmodule Hippy.SendOperationTest do
     {path, req} = sent()
     assert path == "/admin/"
 
-    assert Enum.filter(req.operation_attributes, &(elem(&1, 1) == "printer-uri")) == [
-             {:uri, "printer-uri", other}
+    assert Enum.filter(group(req, :operation), &(elem(&1, 0) == "printer-uri")) == [
+             {"printer-uri", [uri: other]}
            ]
   end
 

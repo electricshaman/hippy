@@ -1,15 +1,18 @@
 defmodule Hippy.DecoderTest do
   use ExUnit.Case
 
-  alias Hippy.Decoder
+  alias Hippy.{Decoder, Message}
 
   @header <<1, 1, 0, 0, 0, 0, 0, 1>>
   @operation_group <<0x01, 0x47, 18::16, "attributes-charset", 5::16, "utf-8">>
 
-  defp response(groups), do: @header <> @operation_group <> groups <> <<0x03>>
+  defp decode(groups), do: (@header <> @operation_group <> groups <> <<0x03>>) |> Decoder.decode()
 
-  # The attributes of a response with exactly one printer group.
-  defp printer(%{printer_attributes: [group]}), do: group
+  # The attributes of the first group with a tag, exactly as decoded.
+  defp group(%Message{groups: groups}, tag) do
+    {^tag, attributes} = List.keyfind(groups, tag, 0)
+    attributes
+  end
 
   defp keyword(name, value),
     do: <<0x44, byte_size(name)::16, name::binary, byte_size(value)::16, value::binary>>
@@ -18,254 +21,192 @@ defmodule Hippy.DecoderTest do
     do: <<0x42, byte_size(name)::16, name::binary, byte_size(value)::16, value::binary>>
 
   defp enum(name, value), do: <<0x23, byte_size(name)::16, name::binary, 4::16, value::32>>
+  defp additional(tag, value), do: <<tag, 0::16, byte_size(value)::16, value::binary>>
 
-  test "decodes captured Get-Printer-Attributes response" do
-    res = Decoder.decode(File.read!("test/captures/get_printer_attributes_res.bin"))
-    assert res.status_code == :successful_ok
-    assert length(res.printer_attributes) > 0
-  end
+  test "decodes captured responses" do
+    res = "test/captures/get_printer_attributes_res.bin" |> File.read!() |> Decoder.decode()
+    assert Message.status(res) == :successful_ok
+    assert map_size(Message.printer(res)) > 50
 
-  test "decodes captured Get-Jobs response" do
-    res = Decoder.decode(File.read!("test/captures/ipp_get_jobs_res.bin"))
-    assert res.status_code == :successful_ok
-    assert length(res.job_attributes) > 0
+    res = "test/captures/ipp_get_jobs_res.bin" |> File.read!() |> Decoder.decode()
+    assert length(Message.jobs(res)) > 1
   end
 
   test "status codes Hippy doesn't know are kept as integers" do
     res = Decoder.decode(<<1, 1, 0x0499::16, 0, 0, 0, 1, 0x01, 0x03>>)
-    assert res.status_code == 0x0499
+    assert Message.status(res) == 0x0499
 
     res = Decoder.decode(<<1, 1, 0x0406::16, 0, 0, 0, 1, 0x01, 0x03>>)
-    assert res.status_code == :client_error_not_found
+    assert Message.status(res) == :client_error_not_found
   end
 
-  test "decodes unsupported attributes group" do
-    res = Decoder.decode(response(<<0x05>> <> keyword("foo", "bar")))
-    assert res.unsupported_attributes == [{:keyword, "foo", "bar"}]
-  end
-
-  test "keeps repeated printer groups separate, in order" do
-    res =
-      Decoder.decode(
-        response(
-          <<0x04>> <> keyword("a", "1") <> keyword("b", "1") <> <<0x04>> <> keyword("c", "1")
-        )
-      )
-
-    assert res.printer_attributes == [
-             [{:keyword, "a", "1"}, {:keyword, "b", "1"}],
-             [{:keyword, "c", "1"}]
-           ]
-  end
-
-  test "decodes textWithLanguage and nameWithLanguage" do
-    text = <<0x35, 4::16, "text", 9::16, 2::16, "en", 3::16, "abc">>
-    name = <<0x36, 4::16, "name", 9::16, 2::16, "fr", 3::16, "xyz">>
-    res = Decoder.decode(response(<<0x04>> <> text <> name))
-
-    assert printer(res) == [
-             {:text_with_language, "text", {"en", "abc"}},
-             {:name_with_language, "name", {"fr", "xyz"}}
-           ]
-  end
-
-  test "leaves unknown enum attributes and values as integers" do
-    res =
-      Decoder.decode(
-        response(
+  describe "exactly as sent" do
+    test "groups, in order, with repeats and tags IANA hasn't assigned" do
+      res =
+        decode(
           <<0x04>> <>
-            enum("x-unknown-state", 3) <>
-            enum("finishings-supported", 0x40000001) <> enum("printer-state", 3)
+            keyword("a", "1") <>
+            <<0x0B>> <>
+            keyword("x", "1") <> <<0x04>> <> keyword("b", "1") <> <<0x05>> <> keyword("c", "1")
         )
-      )
 
-    assert printer(res) == [
-             {:enum, "x-unknown-state", 3},
-             {:enum, "finishings-supported", 0x40000001},
-             {:enum, "printer-state", :idle}
-           ]
+      assert res.groups == [
+               {:operation, [{"attributes-charset", [charset: "utf-8"]}]},
+               {:printer, [{"a", [keyword: "1"]}]},
+               {0x0B, [{"x", [keyword: "1"]}]},
+               {:printer, [{"b", [keyword: "1"]}]},
+               {:unsupported, [{"c", [keyword: "1"]}]}
+             ]
+    end
+
+    test "each value with its own syntax, and repeated attributes kept" do
+      res =
+        decode(
+          <<0x04>> <>
+            keyword("media", "a4") <>
+            additional(0x42, "custom") <>
+            enum("printer-state", 3) <> keyword("media", "letter")
+        )
+
+      assert group(res, :printer) == [
+               {"media", [keyword: "a4", name_without_language: "custom"]},
+               {"printer-state", [enum: 3]},
+               {"media", [keyword: "letter"]}
+             ]
+    end
+
+    test "textWithLanguage and nameWithLanguage" do
+      text = <<0x35, 4::16, "text", 9::16, 2::16, "en", 3::16, "abc">>
+      name = <<0x36, 4::16, "name", 9::16, 2::16, "fr", 3::16, "xyz">>
+
+      assert decode(<<0x04>> <> text <> name) |> group(:printer) == [
+               {"text", [text_with_language: {"en", "abc"}]},
+               {"name", [name_with_language: {"fr", "xyz"}]}
+             ]
+    end
+
+    test "collections, with members in order" do
+      collection =
+        <<0x34, 3::16, "col", 0::16, 0x4A, 0::16, 1::16, "m">> <>
+          additional(0x44, "a") <>
+          additional(0x44, "b") <>
+          <<0x4A, 0::16, 1::16, "n">> <> additional(0x21, <<5::32>>) <> <<0x37, 0::32>>
+
+      assert decode(<<0x04>> <> collection) |> group(:printer) == [
+               {"col", [collection: [{"m", [keyword: "a", keyword: "b"]}, {"n", [integer: 5]}]]}
+             ]
+    end
+
+    test "out-of-band values, and value tags Hippy doesn't know" do
+      out_of_band = fn tag, name -> <<tag, byte_size(name)::16, name::binary, 0::16>> end
+
+      res =
+        decode(
+          <<0x04>> <>
+            out_of_band.(0x15, "printer-name") <>
+            out_of_band.(0x16, "job-hold-until") <>
+            out_of_band.(0x17, "media") <>
+            out_of_band.(0x13, "x") <>
+            out_of_band.(0x1F, "y") <> <<0x60, 1::16, "z", 2::16, 1, 2>>
+        )
+
+      assert group(res, :printer) == [
+               {"printer-name", [not_settable: nil]},
+               {"job-hold-until", [delete_attribute: nil]},
+               {"media", [admin_define: nil]},
+               {"x", [no_value: nil]},
+               {"y", [{0x1F, ""}]},
+               {"z", [{0x60, <<1, 2>>}]}
+             ]
+    end
   end
 
-  test "keeps order of multi-valued collection members" do
-    value = fn v -> <<0x44, 0::16, byte_size(v)::16, v::binary>> end
-
-    collection =
-      <<0x34, 3::16, "col", 0::16, 0x4A, 0::16, 1::16, "m">> <>
-        value.("a") <> value.("b") <> value.("c") <> value.("d") <> <<0x37, 0::32>>
-
-    res = Decoder.decode(response(<<0x04>> <> collection))
-    [{:collection, "col", %{"m" => members}}] = printer(res)
-    assert Enum.map(members, &elem(&1, 2)) == ["a", "b", "c", "d"]
-  end
-
-  describe "multi-valued attributes" do
-    defp additional(tag, value), do: <<tag, 0::16, byte_size(value)::16, value::binary>>
-
-    test "are decoded as a list in every group" do
+  describe "as maps" do
+    test "sets are lists in every group" do
       set = keyword("reasons", "a") <> additional(0x44, "b") <> additional(0x44, "c")
 
-      for {delimiter, field} <- [
-            {0x01, :operation_attributes},
-            {0x04, :printer_attributes},
-            {0x05, :unsupported_attributes}
-          ] do
-        res = Decoder.decode(response(<<delimiter>> <> set))
-        attributes = if field == :printer_attributes, do: printer(res), else: res[field]
-        assert {:keyword, "reasons", ["a", "b", "c"]} in attributes
+      for tag <- [0x01, 0x04, 0x05] do
+        res = decode(<<tag>> <> set)
+        {_tag, attributes} = List.last(res.groups)
+        assert Message.to_map(attributes)["reasons"] == ["a", "b", "c"]
       end
     end
 
-    test "are kept per job" do
+    test "sets are kept per job" do
       res =
-        Decoder.decode(
-          response(
-            <<0x02>> <>
-              keyword("job-state-reasons", "job-incoming") <>
-              additional(0x44, "job-hold-until-specified") <>
-              <<0x02>> <> keyword("job-state-reasons", "none")
-          )
+        decode(
+          <<0x02>> <>
+            keyword("job-state-reasons", "job-incoming") <>
+            additional(0x44, "job-hold-until-specified") <>
+            <<0x02>> <> keyword("job-state-reasons", "none")
         )
 
-      assert Hippy.AttributeGroup.to_map(res.job_attributes, 0)["job-state-reasons"] ==
-               ["job-incoming", "job-hold-until-specified"]
-
-      # job-state-reasons is a set, so it's a list even with one value.
-      assert Hippy.AttributeGroup.to_map(res.job_attributes, 1)["job-state-reasons"] == ["none"]
-    end
-
-    test "keep repeated values and values of different syntaxes" do
-      res =
-        Decoder.decode(
-          response(
-            <<0x04>> <>
-              keyword("media", "a4") <>
-              additional(0x42, "custom") <>
-              additional(0x44, "a4") <> keyword("other", "x")
-          )
-        )
-
-      assert printer(res) == [
-               {:keyword, "media", ["a4", "custom", "a4"]},
-               {:keyword, "other", "x"}
+      assert Enum.map(Message.jobs(res), & &1["job-state-reasons"]) == [
+               ["job-incoming", "job-hold-until-specified"],
+               # job-state-reasons is a set, so it's a list even with one value.
+               ["none"]
              ]
     end
 
-    test "transform each value" do
+    test "values of different syntaxes stay together, and values are converted" do
       res =
-        Decoder.decode(
-          response(<<0x04>> <> enum("printer-state", 3) <> <<0x23, 0::16, 4::16, 5::32>>)
+        decode(
+          <<0x04>> <>
+            keyword("media", "a4") <>
+            additional(0x42, "custom") <>
+            additional(0x44, "a4") <>
+            enum("printer-state", 3) <>
+            <<0x23, 0::16, 4::16, 5::32>> <>
+            enum("x-unknown-state", 3) <> enum("finishings-supported", 0x40000001)
         )
 
-      assert printer(res) == [{:enum, "printer-state", [:idle, :stopped]}]
-    end
-  end
-
-  test "several printers are kept as separate groups" do
-    # e.g. CUPS-Get-Printers, which returns one printer attributes group per printer.
-    printer = fn name, state, reason ->
-      <<0x04>> <>
-        name("printer-name", name) <> enum("printer-state", state) <> keyword("r", reason)
+      assert Message.printer(res) == %{
+               "media" => ["a4", "custom", "a4"],
+               "printer-state" => [:idle, :stopped],
+               "x-unknown-state" => 3,
+               "finishings-supported" => [0x40000001]
+             }
     end
 
-    res =
-      Decoder.decode(
-        response(
-          printer.("front-desk", 3, "none") <>
-            printer.("warehouse", 5, "none") <> printer.("lab", 3, "media-empty")
-        )
-      )
-
-    assert res.printer_attributes == [
-             [
-               {:name_without_language, "printer-name", "front-desk"},
-               {:enum, "printer-state", :idle},
-               {:keyword, "r", "none"}
-             ],
-             [
-               {:name_without_language, "printer-name", "warehouse"},
-               {:enum, "printer-state", :stopped},
-               {:keyword, "r", "none"}
-             ],
-             [
-               {:name_without_language, "printer-name", "lab"},
-               {:enum, "printer-state", :idle},
-               {:keyword, "r", "media-empty"}
-             ]
-           ]
-  end
-
-  test "merges attributes repeated by name within a group" do
-    res =
-      Decoder.decode(
-        response(
+    test "attributes repeated by name within a group are merged" do
+      res =
+        decode(
           <<0x04>> <>
             keyword("types", "a") <>
             additional(0x44, "b") <>
             keyword("sheet-back", "normal") <>
             keyword("types", "b") <> keyword("types", "c") <> keyword("sheet-back", "normal")
         )
-      )
 
-    assert printer(res) == [
-             {:keyword, "types", ["a", "b", "c"]},
-             {:keyword, "sheet-back", "normal"}
-           ]
-  end
+      assert Message.printer(res) == %{"types" => ["a", "b", "c"], "sheet-back" => "normal"}
+    end
 
-  describe "groups and values added after RFC 8011" do
-    test "subscription, event notification, resource and document groups are kept per group" do
-      for {tag, field} <- [
-            {0x06, :subscription_attributes},
-            {0x07, :event_notification_attributes},
-            {0x08, :resource_attributes},
-            {0x09, :document_attributes}
-          ] do
-        res =
-          Decoder.decode(response(<<tag>> <> keyword("a", "1") <> <<tag>> <> keyword("a", "2")))
-
-        assert res[field] == [[{:keyword, "a", "1"}], [{:keyword, "a", "2"}]]
+    test "several printers are separate maps" do
+      printer = fn name, state, reason ->
+        <<0x04>> <>
+          name("printer-name", name) <> enum("printer-state", state) <> keyword("r", reason)
       end
-    end
-
-    test "system attributes are a single group" do
-      res = Decoder.decode(response(<<0x0A>> <> keyword("system-state-reasons", "none")))
-      assert res.system_attributes == [{:keyword, "system-state-reasons", "none"}]
-    end
-
-    test "group tags not assigned by IANA go to unknown_attributes" do
-      res =
-        Decoder.decode(response(<<0x0B>> <> keyword("x", "1") <> <<0x04>> <> keyword("y", "2")))
-
-      assert res.unknown_attributes == [{:keyword, "x", "1"}]
-      assert printer(res) == [{:keyword, "y", "2"}]
-    end
-
-    test "out-of-band values" do
-      out_of_band = fn tag, name -> <<tag, byte_size(name)::16, name::binary, 0::16>> end
 
       res =
-        Decoder.decode(
-          response(
-            <<0x04>> <>
-              out_of_band.(0x15, "printer-name") <>
-              out_of_band.(0x16, "job-hold-until") <>
-              out_of_band.(0x17, "media") <>
-              out_of_band.(0x13, "x") <> out_of_band.(0x1F, "y")
-          )
+        decode(
+          printer.("front-desk", 3, "none") <>
+            printer.("warehouse", 5, "none") <> printer.("lab", 3, "media-empty")
         )
 
-      assert printer(res) == [
-               {:not_settable, "printer-name", :not_settable},
-               {:delete_attribute, "job-hold-until", :delete_attribute},
-               {:admin_define, "media", :admin_define},
-               {:no_value, "x", :no_value},
-               {0x1F, "y", ""}
+      assert Message.printers(res) == [
+               %{"printer-name" => "front-desk", "printer-state" => :idle, "r" => "none"},
+               %{"printer-name" => "warehouse", "printer-state" => :stopped, "r" => "none"},
+               %{"printer-name" => "lab", "printer-state" => :idle, "r" => "media-empty"}
              ]
     end
 
-    test "value tags Hippy doesn't know keep their tag and bytes" do
-      res = Decoder.decode(response(<<0x04, 0x60, 1::16, "x", 2::16, 1, 2>>))
-      assert printer(res) == [{0x60, "x", <<1, 2>>}]
+    test "collections are maps, and out-of-band values are their syntax" do
+      collection =
+        <<0x34, 3::16, "col", 0::16, 0x4A, 0::16, 1::16, "m">> <>
+          additional(0x44, "a") <> additional(0x44, "b") <> <<0x37, 0::32>>
+
+      res = decode(<<0x04>> <> collection <> <<0x13, 1::16, "x", 0::16>>)
+      assert Message.printer(res) == %{"col" => %{"m" => ["a", "b"]}, "x" => :no_value}
     end
   end
 end

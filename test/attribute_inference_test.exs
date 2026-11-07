@@ -96,10 +96,10 @@ defmodule Hippy.AttributeInferenceTest do
       assert AttributeInference.group(print_job, "copies") == :job
       assert AttributeInference.group(print_job, "job-hold-until") == :job
       assert AttributeInference.group(print_job, "job-name") == :operation
-      assert AttributeInference.group(print_job, "notify-events") == :subscription_attributes
+      assert AttributeInference.group(print_job, "notify-events") == :subscription
 
       assert AttributeInference.group(Operation.cups_add_modify_printer(), "printer-location") ==
-               :printer_attributes
+               :printer
 
       assert AttributeInference.group(Operation.cups_get_printers(), "printer-location") ==
                :operation
@@ -117,7 +117,7 @@ defmodule Hippy.AttributeInferenceTest do
 
       assert AttributeInference.place(Operation.cups_add_modify_printer(), %{
                "device-uri" => {:uri, "socket://10.0.0.5"}
-             }).groups == [printer_attributes: [{:uri, "device-uri", "socket://10.0.0.5"}]]
+             }).groups == [printer: [{:uri, "device-uri", "socket://10.0.0.5"}]]
 
       assert AttributeInference.place(Operation.get_printer_attributes(), %{
                "x-acme-detail" => {:keyword, "full"}
@@ -133,7 +133,7 @@ defmodule Hippy.AttributeInferenceTest do
            }) == %{
              operation: [{:name_without_language, "job-name", "Report"}],
              job: [{:integer, "copies", 2}],
-             groups: [subscription_attributes: [{:keyword, "notify-events", "job-completed"}]]
+             groups: [subscription: [{:keyword, "notify-events", "job-completed"}]]
            }
   end
 end

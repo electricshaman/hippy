@@ -4,7 +4,7 @@ defmodule Hippy do
 
   Functions that send a request over the network are named `send_*`. Everything else, such as
   building operations (`Hippy.Operation.PrintJob.new/3`), encoding and decoding, and reading
-  responses (`Hippy.Response`), has no side effects.
+  responses (`Hippy.Message`), has no side effects.
   """
 
   @doc """
@@ -43,9 +43,9 @@ defmodule Hippy do
       a file).
     * `:target` - `:printer`, `:job` or `:server`, instead of working it out.
     * `:operation_attributes`, `:job_attributes` and `:groups` - attributes given explicitly as
-      `{syntax, name, value}`, as for operations (see `Hippy.Request`).
+      `{syntax, name, value}`, as for operations (see `Hippy.Message.build_request/4`).
     * `:charset` and `:language` - default to `"utf-8"` and `"en"`.
-    * `:req_options`, `:endpoint` and `:raw`, as for `send_operation/2`.
+    * `:req_options` and `:endpoint`, as for `send_operation/2`.
 
   Returns the same results as `send_operation/2`, or `{:error, {:unknown_operation, name}}` for
   an operation name Hippy doesn't know (in which case nothing is sent).
