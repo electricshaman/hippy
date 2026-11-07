@@ -51,6 +51,31 @@ defmodule Hippy.Encoder do
   it's returned as a stream (the encoded attributes, then the document's chunks as they're
   read), so the document is never all in memory.
   """
+  def encode(%Hippy.Message{request_id: nil}) do
+    raise ArgumentError, "request_id is required (Hippy.Server assigns one when sending)"
+  end
+
+  def encode(%Hippy.Message{data: data} = message) when not is_binary(data) do
+    if Enumerable.impl_for(data) == nil do
+      raise ArgumentError,
+            "data must be a binary or an Enumerable of binaries, got: #{inspect(data)}"
+    end
+
+    Stream.concat([encode(%{message | data: <<>>})], data)
+  end
+
+  def encode(%Hippy.Message{version: {major, minor}} = message) do
+    groups =
+      for {tag, attributes} <- message.groups, into: <<>> do
+        for attribute <- attributes, into: <<Hippy.Message.tag_number(tag)::8>> do
+          encode_message_attribute(attribute)
+        end
+      end
+
+    <<major::8-signed, minor::8-signed, message.code::16-signed, message.request_id::32-signed,
+      groups::binary, DelimiterTag.end_of_attributes()::8-signed, message.data::binary>>
+  end
+
   def encode(%Request{data: data} = req) when not is_binary(data) do
     if Enumerable.impl_for(data) == nil do
       raise ArgumentError,
@@ -99,6 +124,28 @@ defmodule Hippy.Encoder do
           "invalid attribute group #{inspect(group)} (operation attributes always come first, " <>
             "in operation_attributes)"
   end
+
+  # A message attribute, {name, [{syntax, value}, ...]}: the first value carries the name, and the
+  # others are additional values with an empty name.
+  defp encode_message_attribute({name, [{syntax, value} | rest]}) do
+    for {syntax, value} <- rest,
+        into: encode_attribute({syntax, name || "", message_value(syntax, value)}) do
+      encode_attribute({syntax, "", message_value(syntax, value)})
+    end
+  end
+
+  defp encode_message_attribute(attribute) do
+    raise ArgumentError, "invalid attribute #{inspect(attribute)}"
+  end
+
+  # Collection members are {member, [{syntax, value}, ...]}, in order.
+  defp message_value(:collection, members) when is_list(members) do
+    for {member, values} <- members do
+      {member, Enum.map(values, fn {syntax, value} -> {syntax, message_value(syntax, value)} end)}
+    end
+  end
+
+  defp message_value(_syntax, value), do: value
 
   defp encode_attribute({{:set1, syntax}, name, values}) when is_list(values) do
     encode_attribute({syntax, name, values})

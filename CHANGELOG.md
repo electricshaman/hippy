@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- `Hippy.Message`, one struct for IPP requests and responses, holding a message exactly as it's
+  sent: groups in order (repeated groups and tags IANA hasn't assigned included), each
+  attribute as `{name, [{syntax, value}, ...]}`, and values as on the wire.
+  `Hippy.Message.decode/1` and `encode/1` round-trip any message byte for byte. (Step 1 of #47;
+  the rest of Hippy moves to it next.)
+
 ## 0.6.0 (2026-11-07)
 
 Hippy now knows the IANA IPP registry: attributes can be given as plain names and values, any
