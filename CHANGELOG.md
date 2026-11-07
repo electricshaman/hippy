@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 (2026-11-07)
 
 ### Upgrading from 0.6
 
@@ -51,6 +51,10 @@ Responses and requests are now `%Hippy.Message{}`, which holds a message exactly
 
 ### Added
 
+- `Hippy.Message`, one struct for IPP requests and responses, holding a message exactly as it's
+  sent: groups in order (repeated groups and tags IANA hasn't assigned included), each
+  attribute as `{name, [{syntax, value}, ...]}`, and values as on the wire.
+  `Hippy.Message.decode/1` and `encode/1` round-trip any message byte for byte.
 - `Hippy.safe_to_resend?/1` says whether a failed request definitely wasn't accepted, so sending
   it again (e.g. to another printer) can't print twice. It takes any error `send_operation`
   returns: IPP errors, HTTP 4xx errors, refused connections and failed TLS handshakes are safe;
@@ -63,10 +67,15 @@ Responses and requests are now `%Hippy.Message{}`, which holds a message exactly
   wait, both to connect and for the response.
 - `Hippy.Operation.GetPrinterAttributes` takes `requested_attributes:`, like the other query
   operations.
-- `Hippy.Message`, one struct for IPP requests and responses, holding a message exactly as it's
-  sent: groups in order (repeated groups and tags IANA hasn't assigned included), each
-  attribute as `{name, [{syntax, value}, ...]}`, and values as on the wire.
-  `Hippy.Message.decode/1` and `encode/1` round-trip any message byte for byte.
+
+### Documentation
+
+- The README is rewritten: a quick start, how the API fits together (build an operation, send
+  it, read the response), examples to build on (an ink gauge and a Mandelbrot page for a printer
+  at home; status checks, routing and print-and-wait for a fleet), everyday tasks, errors and
+  connecting. Its longer examples run in the integration tests.
+- The docs sidebar groups modules into Sending, Operations, Messages, Errors and IPP reference.
+- The integration tests also run against `ippeveprinter`, an emulated driverless printer.
 
 ## 0.6.0 (2026-11-07)
 
