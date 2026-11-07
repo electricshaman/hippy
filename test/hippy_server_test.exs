@@ -92,7 +92,7 @@ defmodule Hippy.ServerTest do
     test "req_options are merged over the configured ones" do
       Req.Test.stub(:other, &Plug.Conn.send_resp(&1, 401, "other"))
 
-      assert {:error, {:http_error, 401, "other"}} =
+      assert {:error, %Hippy.HTTPError{status: 401, body: "other"}} =
                Server.send_operation(GetJobs.new(@endpoint),
                  req_options: [plug: {Req.Test, :other}]
                )
@@ -180,10 +180,34 @@ defmodule Hippy.ServerTest do
     end
   end
 
+  test "HTTP errors are exceptions with the status" do
+    assert Exception.message(%Hippy.HTTPError{status: 426}) == "HTTP 426 Upgrade Required"
+    assert Exception.message(%Hippy.HTTPError{status: 418}) == "HTTP 418"
+  end
+
+  test "timeout: gives up on a printer that doesn't answer" do
+    # A server that accepts the connection and never responds, reached through Req's real HTTP
+    # client rather than the Req.Test plug configured for tests.
+    configured = Application.get_env(:hippy, :req_options)
+    Application.put_env(:hippy, :req_options, [])
+    on_exit(fn -> Application.put_env(:hippy, :req_options, configured) end)
+
+    {:ok, listen} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
+    {:ok, port} = :inet.port(listen)
+    spawn_link(fn -> {:ok, _socket} = :gen_tcp.accept(listen) && Process.sleep(:infinity) end)
+
+    op = GetJobs.new("ipp://localhost:#{port}/printers/p")
+    {time, result} = :timer.tc(fn -> Server.send_operation(op, timeout: 200) end)
+
+    assert {:error, %Req.TransportError{reason: :timeout} = error} = result
+    assert Exception.message(error) =~ "timeout"
+    assert div(time, 1000) < 2_000
+  end
+
   test "non-200 HTTP responses return an error" do
     Req.Test.stub(Server, &Plug.Conn.send_resp(&1, 401, "Unauthorized"))
 
-    assert {:error, {:http_error, 401, "Unauthorized"}} =
+    assert {:error, %Hippy.HTTPError{status: 401, body: "Unauthorized"}} =
              Server.send_operation(GetJobs.new(@endpoint))
   end
 

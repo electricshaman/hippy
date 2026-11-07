@@ -38,6 +38,21 @@ defmodule Hippy.OperationTest do
     end
   end
 
+  test "Get-Printer-Attributes sends requested-attributes only when given" do
+    message = @uri |> GetPrinterAttributes.new() |> Operation.build_request()
+    refute "requested-attributes" in names(group(message, :operation))
+
+    message =
+      @uri
+      |> GetPrinterAttributes.new(requested_attributes: ["printer-state", "queued-job-count"])
+      |> Operation.build_request()
+
+    assert {"requested-attributes", [keyword: "printer-state", keyword: "queued-job-count"]} in group(
+             message,
+             :operation
+           )
+  end
+
   test "document-format is only sent when given" do
     message = @uri |> PrintJob.new("doc") |> Operation.build_request()
     refute "document-format" in names(group(message, :operation))

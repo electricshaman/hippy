@@ -45,7 +45,7 @@ defmodule Hippy do
     * `:operation_attributes`, `:job_attributes` and `:groups` - attributes given explicitly as
       `{syntax, name, value}`, as for operations (see `Hippy.Message.build_request/4`).
     * `:charset` and `:language` - default to `"utf-8"` and `"en"`.
-    * `:req_options` and `:endpoint`, as for `send_operation/2`.
+    * `:timeout`, `:req_options` and `:endpoint`, as for `send_operation/2`.
 
   Returns the same results as `send_operation/2`, or `{:error, {:unknown_operation, name}}` for
   an operation name Hippy doesn't know (in which case nothing is sent).
