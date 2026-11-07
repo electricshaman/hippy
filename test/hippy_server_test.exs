@@ -36,7 +36,7 @@ defmodule Hippy.ServerTest do
     end)
 
     assert {:ok, %Hippy.Message{code: 0x0000}} =
-             Server.send_operation(GetJobs.new(@endpoint))
+             GetJobs.new(@endpoint) |> Server.send_operation()
   end
 
   test "assigns a request id unless one is set" do
@@ -51,7 +51,7 @@ defmodule Hippy.ServerTest do
       Plug.Conn.send_resp(conn, 200, response)
     end)
 
-    req = Hippy.Operation.build_request(GetJobs.new(@endpoint))
+    req = GetJobs.new(@endpoint) |> Hippy.Operation.build_request()
     assert req.request_id == nil
 
     {:ok, _} = Server.send_request(req, @endpoint)
@@ -79,12 +79,12 @@ defmodule Hippy.ServerTest do
 
     test "req_options apply to one call" do
       {:ok, _} =
-        Server.send_operation(GetJobs.new(@endpoint), req_options: [auth: {:basic, "u:p"}])
+        GetJobs.new(@endpoint) |> Server.send_operation(req_options: [auth: {:basic, "u:p"}])
 
       assert_received {:request, conn}
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Basic " <> Base.encode64("u:p")]
 
-      {:ok, _} = Server.send_operation(GetJobs.new(@endpoint))
+      {:ok, _} = GetJobs.new(@endpoint) |> Server.send_operation()
       assert_received {:request, conn}
       assert Plug.Conn.get_req_header(conn, "authorization") == []
     end
@@ -93,9 +93,8 @@ defmodule Hippy.ServerTest do
       Req.Test.stub(:other, &Plug.Conn.send_resp(&1, 401, "other"))
 
       assert {:error, %Hippy.HTTPError{status: 401, body: "other"}} =
-               Server.send_operation(GetJobs.new(@endpoint),
-                 req_options: [plug: {Req.Test, :other}]
-               )
+               GetJobs.new(@endpoint)
+               |> Server.send_operation(req_options: [plug: {Req.Test, :other}])
     end
 
     test "configured and per-call headers keep the IPP content type" do
@@ -104,7 +103,7 @@ defmodule Hippy.ServerTest do
       on_exit(fn -> Application.put_env(:hippy, :req_options, configured) end)
 
       {:ok, _} =
-        Server.send_operation(GetJobs.new(@endpoint), req_options: [headers: [{"x-call", "2"}]])
+        GetJobs.new(@endpoint) |> Server.send_operation(req_options: [headers: [{"x-call", "2"}]])
 
       assert_received {:request, conn}
       assert Plug.Conn.get_req_header(conn, "content-type") == ["application/ipp"]
@@ -126,7 +125,9 @@ defmodule Hippy.ServerTest do
 
       assert Server.send_operation(op, endpoint: nil) == {:error, :printer_uri_required}
 
-      {:ok, _} = Server.send_operation(Hippy.Operation.CupsGetPrinters.new("ipp://cups.example/"))
+      {:ok, _} =
+        Hippy.Operation.CupsGetPrinters.new("ipp://cups.example/") |> Server.send_operation()
+
       assert_received {:request, %{host: "cups.example", port: 631, request_path: "/"}}
     end
   end
@@ -149,7 +150,7 @@ defmodule Hippy.ServerTest do
       respond_with(0x0406, "The printer or class does not exist.")
 
       assert {:error, %Hippy.Error{status: :client_error_not_found} = error} =
-               Server.send_operation(GetJobs.new(@endpoint))
+               GetJobs.new(@endpoint) |> Server.send_operation()
 
       assert error.message == "The printer or class does not exist."
       assert %Hippy.Message{code: 0x0406} = error.response
@@ -160,13 +161,13 @@ defmodule Hippy.ServerTest do
       respond_with(0x0506)
 
       assert {:error, %Hippy.Error{status: :server_error_not_accepting_jobs, message: nil}} =
-               Server.send_operation(GetJobs.new(@endpoint))
+               GetJobs.new(@endpoint) |> Server.send_operation()
     end
 
     test "successful statuses, including ones with a warning, are ok" do
       respond_with(0x0001)
 
-      assert {:ok, response} = Server.send_operation(GetJobs.new(@endpoint))
+      assert {:ok, response} = GetJobs.new(@endpoint) |> Server.send_operation()
       assert Hippy.Message.status(response) == :successful_ok_ignored_or_substituted_attributes
     end
 
@@ -174,7 +175,7 @@ defmodule Hippy.ServerTest do
       respond_with(0x04FF)
 
       assert {:error, %Hippy.Error{status: 0x04FF} = error} =
-               Server.send_operation(GetJobs.new(@endpoint))
+               GetJobs.new(@endpoint) |> Server.send_operation()
 
       assert Exception.message(error) == "IPP error 0x04FF"
     end
@@ -208,13 +209,13 @@ defmodule Hippy.ServerTest do
     Req.Test.stub(Server, &Plug.Conn.send_resp(&1, 401, "Unauthorized"))
 
     assert {:error, %Hippy.HTTPError{status: 401, body: "Unauthorized"}} =
-             Server.send_operation(GetJobs.new(@endpoint))
+             GetJobs.new(@endpoint) |> Server.send_operation()
   end
 
   test "transport errors return an error" do
     Req.Test.stub(Server, &Req.Test.transport_error(&1, :econnrefused))
 
     assert {:error, %Req.TransportError{reason: :econnrefused}} =
-             Server.send_operation(GetJobs.new(@endpoint))
+             GetJobs.new(@endpoint) |> Server.send_operation()
   end
 end

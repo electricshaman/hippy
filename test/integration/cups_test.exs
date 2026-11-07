@@ -71,7 +71,7 @@ defmodule Hippy.Integration.CupsTest do
             {"held_jobs", :stopped, true},
             {"rejecting", :idle, false}
           ] do
-        res = send!(GetPrinterAttributes.new(printer(http, queue)))
+        res = printer(http, queue) |> GetPrinterAttributes.new() |> send!()
         attrs = Message.printer(res)
 
         assert Message.status(res) == :successful_ok
@@ -111,7 +111,7 @@ defmodule Hippy.Integration.CupsTest do
         assert bin |> Message.decode() |> Message.encode() == bin, "#{queue} didn't round-trip"
       end
 
-      res = send!(GetPrinterAttributes.new(printer(http, "raw")))
+      res = printer(http, "raw") |> GetPrinterAttributes.new() |> send!()
       assert res.code == 0
       {:printer, printer} = List.keyfind(res.groups, :printer, 0)
       assert {"printer-state", [enum: 3]} in printer
@@ -119,11 +119,11 @@ defmodule Hippy.Integration.CupsTest do
 
     test "accepts an ipp:// printer URI", %{http: http} do
       uri = String.replace(printer(http, "raw"), "http://", "ipp://")
-      assert Message.status(send!(GetPrinterAttributes.new(uri))) == :successful_ok
+      assert uri |> GetPrinterAttributes.new() |> send!() |> Message.status() == :successful_ok
     end
 
     test "missing queue returns not found", %{http: http} do
-      error = ipp_error!(GetPrinterAttributes.new(printer(http, "missing")))
+      error = printer(http, "missing") |> GetPrinterAttributes.new() |> ipp_error!()
       assert error.status == :client_error_not_found
       assert error.message =~ "does not exist"
     end
@@ -132,7 +132,9 @@ defmodule Hippy.Integration.CupsTest do
       statuses =
         1..25
         |> Task.async_stream(
-          fn _ -> Message.status(send!(GetPrinterAttributes.new(printer(http, "raw")))) end,
+          fn _ ->
+            printer(http, "raw") |> GetPrinterAttributes.new() |> send!() |> Message.status()
+          end,
           max_concurrency: 25
         )
         |> Enum.map(fn {:ok, status} -> status end)
@@ -214,24 +216,29 @@ defmodule Hippy.Integration.CupsTest do
 
       # An IPP error, an HTTP error and a refused connection: nothing was printed.
       assert Hippy.safe_to_resend?(
-               error.(PrintJob.new(printer(ctx.http, "rejecting"), pdf()), [])
+               printer(ctx.http, "rejecting")
+               |> PrintJob.new(pdf())
+               |> error.([])
              )
 
       assert Hippy.safe_to_resend?(
-               error.(GetPrinterAttributes.new(printer(ctx.https, "secure")), @anonymous)
+               printer(ctx.https, "secure")
+               |> GetPrinterAttributes.new()
+               |> error.(@anonymous)
              )
 
       assert Hippy.safe_to_resend?(
-               error.(PrintJob.new("ipp://localhost:1/printers/p", pdf()), [])
+               PrintJob.new("ipp://localhost:1/printers/p", pdf())
+               |> error.([])
              )
 
       # A timeout after sending: it may have printed.
       big = :crypto.strong_rand_bytes(25 * 1024 * 1024)
 
       refute Hippy.safe_to_resend?(
-               error.(PrintJob.new(printer(ctx.http, "raw"), big),
-                 req_options: [receive_timeout: 1]
-               )
+               printer(ctx.http, "raw")
+               |> PrintJob.new(big)
+               |> error.(req_options: [receive_timeout: 1])
              )
     end
 
@@ -264,11 +271,10 @@ defmodule Hippy.Integration.CupsTest do
 
     test "CUPS-Get-Printers returns each printer and class separately", %{http: http} do
       res =
-        send!(
-          CupsGetPrinters.new("#{http}/", requested_attributes: ["printer-name", "printer-state"])
-        )
+        CupsGetPrinters.new("#{http}/", requested_attributes: ["printer-name", "printer-state"])
+        |> send!()
 
-      states = Map.new(Message.printers(res), &{&1["printer-name"], &1["printer-state"]})
+      states = Message.printers(res) |> Map.new(&{&1["printer-name"], &1["printer-state"]})
 
       assert Message.status(res) == :successful_ok
       assert names(res) == Enum.sort(["raw_class" | @queues])
@@ -279,21 +285,21 @@ defmodule Hippy.Integration.CupsTest do
     test "CUPS-Get-Printers filters by type, and pages with limit and first-printer-name", ctx do
       op = &CupsGetPrinters.new("#{ctx.http}/", [requested_attributes: ["printer-name"]] ++ &1)
 
-      assert names(send!(op.(printer_type: 0, printer_type_mask: 1))) == @queues
-      assert names(send!(op.(printer_type: 1, printer_type_mask: 1))) == ["raw_class"]
-      assert names(send!(op.(limit: 2))) == ["filtered", "held_cancel"]
-      assert names(send!(op.(first_printer_name: "raw", limit: 2))) == ["raw", "raw_class"]
+      assert names(op.(printer_type: 0, printer_type_mask: 1) |> send!()) == @queues
+      assert names(op.(printer_type: 1, printer_type_mask: 1) |> send!()) == ["raw_class"]
+      assert names(op.(limit: 2) |> send!()) == ["filtered", "held_cancel"]
+      assert names(op.(first_printer_name: "raw", limit: 2) |> send!()) == ["raw", "raw_class"]
     end
 
     test "CUPS-Get-Classes returns classes and their members", %{http: http} do
-      res = send!(CupsGetClasses.new("#{http}/"))
+      res = CupsGetClasses.new("#{http}/") |> send!()
 
       assert [%{"printer-name" => "raw_class", "member-names" => ["raw", "filtered"]}] =
                Message.printers(res)
     end
 
     test "CUPS-Get-Default returns the default printer", %{http: http} do
-      res = send!(CupsGetDefault.new("#{http}/", requested_attributes: ["printer-name"]))
+      res = CupsGetDefault.new("#{http}/", requested_attributes: ["printer-name"]) |> send!()
       assert Message.printer(res) == %{"printer-name" => "raw"}
     end
   end
@@ -330,7 +336,9 @@ defmodule Hippy.Integration.CupsTest do
 
       assert {:ok, %Message{code: 0}} = Hippy.Server.send_request(req, admin, @admin)
 
-      attrs = Message.printer(send!(GetPrinterAttributes.new(printer(ctx.http, name))))
+      attrs =
+        printer(ctx.http, name) |> GetPrinterAttributes.new() |> send!() |> Message.printer()
+
       assert attrs["printer-location"] == "Front desk"
       assert attrs["printer-info"] == "Made by Hippy"
       assert attrs["printer-is-accepting-jobs"] == true
@@ -360,7 +368,9 @@ defmodule Hippy.Integration.CupsTest do
       assert {:ok, %Message{code: 0}} =
                Hippy.Server.send_request(req, "#{ctx.https}/admin/", @admin)
 
-      attrs = Message.printer(send!(GetPrinterAttributes.new(printer(ctx.http, name))))
+      attrs =
+        printer(ctx.http, name) |> GetPrinterAttributes.new() |> send!() |> Message.printer()
+
       assert attrs["printer-location"] == "Back office"
       assert attrs["printer-info"] == "Inferred by Hippy"
       assert attrs["device-uri"] == URI.parse("file:///dev/null")
@@ -407,7 +417,8 @@ defmodule Hippy.Integration.CupsTest do
 
     test "Print-Job with a subscription group subscribes to the job", %{http: http} do
       op =
-        PrintJob.new(printer(http, "raw"), pdf(),
+        printer(http, "raw")
+        |> PrintJob.new(pdf(),
           groups: [
             {:subscription,
              [
@@ -444,8 +455,8 @@ defmodule Hippy.Integration.CupsTest do
 
     test "Print-Job, then job operations by job URI, as the job's owner", %{https: https} do
       {:ok, res} =
-        Hippy.send_operation(
-          printer(https, "held_cancel"),
+        printer(https, "held_cancel")
+        |> Hippy.send_operation(
           :print_job,
           %{"job-name" => "By request"},
           [document: pdf()] ++ @user
@@ -501,7 +512,7 @@ defmodule Hippy.Integration.CupsTest do
       queue = printer(ctx.https, name)
 
       printer_state = fn ->
-        Message.printer(send!(GetPrinterAttributes.new(printer(ctx.http, name))))[
+        Message.printer(printer(ctx.http, name) |> GetPrinterAttributes.new() |> send!())[
           "printer-state"
         ]
       end
@@ -520,7 +531,7 @@ defmodule Hippy.Integration.CupsTest do
 
       assert Message.status(res) == :successful_ok
 
-      assert Message.printer(send!(GetPrinterAttributes.new(printer(ctx.http, name))))[
+      assert Message.printer(printer(ctx.http, name) |> GetPrinterAttributes.new() |> send!())[
                "printer-info"
              ] ==
                "Made by Hippy.send_operation"
@@ -538,7 +549,7 @@ defmodule Hippy.Integration.CupsTest do
       {:ok, %Message{code: 0}} =
         Hippy.send_operation(queue, :cups_delete_printer, %{"printer-uri" => printer_uri}, admin)
 
-      assert ipp_error!(GetPrinterAttributes.new(printer(ctx.http, name))).status ==
+      assert ipp_error!(printer(ctx.http, name) |> GetPrinterAttributes.new()).status ==
                :client_error_not_found
     end
   end
@@ -632,9 +643,9 @@ defmodule Hippy.Integration.CupsTest do
 
     test "unsupported document format is reported", %{http: http} do
       error =
-        ipp_error!(
-          PrintJob.new(printer(http, "raw"), pdf(), document_format: "application/x-nope")
-        )
+        printer(http, "raw")
+        |> PrintJob.new(pdf(), document_format: "application/x-nope")
+        |> ipp_error!()
 
       assert error.status == :client_error_document_format_not_supported
       res = error.response
@@ -644,7 +655,7 @@ defmodule Hippy.Integration.CupsTest do
 
     test "plain text is auto-typed and converted by CUPS", %{http: http} do
       uri = printer(http, "filtered")
-      id = print!(PrintJob.new(uri, "Hello from Hippy\n", job_name: "Hippy text"))
+      id = PrintJob.new(uri, "Hello from Hippy\n", job_name: "Hippy text") |> print!()
       assert wait_for_state(uri, id) == :completed
     end
 
@@ -652,7 +663,7 @@ defmodule Hippy.Integration.CupsTest do
       uri = printer(http, "raw")
       chunks = Stream.repeatedly(fn -> :crypto.strong_rand_bytes(64_000) end) |> Stream.take(400)
 
-      id = print!(PrintJob.new(uri, chunks))
+      id = PrintJob.new(uri, chunks) |> print!()
       assert wait_for_state(uri, id) == :completed
       # 400 × 64,000 bytes.
       assert job_attributes!(uri, id)["job-k-octets"] == 25_000
@@ -665,19 +676,19 @@ defmodule Hippy.Integration.CupsTest do
       File.write!(path, pdf())
       uri = printer(http, "filtered")
 
-      id = print!(PrintJob.new(uri, File.stream!(path), document_format: "application/pdf"))
+      id = PrintJob.new(uri, File.stream!(path), document_format: "application/pdf") |> print!()
       assert wait_for_state(uri, id) == :completed
       assert container_exec(ctx.container, ["head", "-c", "4", "/spool/filtered.ps"]) == "%!PS"
     end
 
     test "large documents", %{http: http} do
       uri = printer(http, "raw")
-      id = print!(PrintJob.new(uri, :crypto.strong_rand_bytes(25 * 1024 * 1024)))
+      id = PrintJob.new(uri, :crypto.strong_rand_bytes(25 * 1024 * 1024)) |> print!()
       assert wait_for_state(uri, id) == :completed
     end
 
     test "queue rejecting jobs returns not accepting jobs", %{http: http} do
-      error = ipp_error!(PrintJob.new(printer(http, "rejecting"), pdf()))
+      error = printer(http, "rejecting") |> PrintJob.new(pdf()) |> ipp_error!()
       assert error.status == :server_error_not_accepting_jobs
     end
   end
@@ -685,7 +696,7 @@ defmodule Hippy.Integration.CupsTest do
   describe "Get-Jobs and Get-Job-Attributes" do
     test "which_jobs filters pending jobs", %{http: http} do
       uri = printer(http, "held_jobs")
-      ids = for n <- 1..2, do: print!(PrintJob.new(uri, pdf(), job_name: "Held #{n}"))
+      ids = for n <- 1..2, do: PrintJob.new(uri, pdf(), job_name: "Held #{n}") |> print!()
 
       assert Enum.map(ids, &job_attributes!(uri, &1)["job-state"]) == [:pending, :pending]
       assert job_ids(uri, :not_completed) == ids
@@ -694,7 +705,7 @@ defmodule Hippy.Integration.CupsTest do
     end
 
     test "missing job returns not found", %{http: http} do
-      error = ipp_error!(GetJobAttributes.new(printer(http, "raw"), 99_999))
+      error = printer(http, "raw") |> GetJobAttributes.new(99_999) |> ipp_error!()
       assert error.status == :client_error_not_found
     end
   end
@@ -702,30 +713,30 @@ defmodule Hippy.Integration.CupsTest do
   describe "Cancel-Job with the default CUPS policy" do
     test "anonymous cancel over plain HTTP requires an upgrade to TLS", %{http: http} do
       uri = printer(http, "held_cancel")
-      id = print!(PrintJob.new(uri, pdf()))
+      id = PrintJob.new(uri, pdf()) |> print!()
 
       assert {:error, %Hippy.HTTPError{status: 426}} =
-               Hippy.send_operation(CancelJob.new(uri, id))
+               CancelJob.new(uri, id) |> Hippy.send_operation()
     end
 
     test "anonymous cancel over HTTPS requires authentication", ctx do
-      id = print!(PrintJob.new(printer(ctx.http, "held_cancel"), pdf()))
-      op = CancelJob.new(printer(ctx.https, "held_cancel"), id)
+      id = printer(ctx.http, "held_cancel") |> PrintJob.new(pdf()) |> print!()
+      op = printer(ctx.https, "held_cancel") |> CancelJob.new(id)
 
       assert {:error, %Hippy.HTTPError{status: 401}} = Hippy.send_operation(op, @anonymous)
     end
 
     test "authenticated user can cancel only their own jobs", ctx do
-      anonymous_id = print!(PrintJob.new(printer(ctx.http, "held_cancel"), pdf()))
+      anonymous_id = printer(ctx.http, "held_cancel") |> PrintJob.new(pdf()) |> print!()
       uri = printer(ctx.https, "held_cancel")
 
       assert {:error, %Hippy.HTTPError{status: 403}} =
-               Hippy.send_operation(CancelJob.new(uri, anonymous_id), @user)
+               CancelJob.new(uri, anonymous_id) |> Hippy.send_operation(@user)
 
-      id = print!(PrintJob.new(uri, pdf(), job_name: "Mine"), @user)
+      id = PrintJob.new(uri, pdf(), job_name: "Mine") |> print!(@user)
       assert job_attributes!(uri, id, @user)["job-originating-user-name"] == "hippy"
 
-      assert Message.status(send!(CancelJob.new(uri, id), @user)) == :successful_ok
+      assert uri |> CancelJob.new(id) |> send!(@user) |> Message.status() == :successful_ok
       assert job_attributes!(uri, id, @user)["job-state"] == :canceled
       assert ipp_error!(CancelJob.new(uri, id), @user).status == :client_error_not_possible
     end
@@ -733,17 +744,17 @@ defmodule Hippy.Integration.CupsTest do
 
   describe "authentication and transport" do
     test "Basic auth over HTTPS", %{https: https} do
-      op = GetPrinterAttributes.new(printer(https, "secure"))
+      op = printer(https, "secure") |> GetPrinterAttributes.new()
       wrong = [req_options: @tls ++ [auth: {:basic, "hippy:wrong"}]]
 
       assert {:error, %Hippy.HTTPError{status: 401}} = Hippy.send_operation(op, @anonymous)
       assert {:error, %Hippy.HTTPError{status: 401}} = Hippy.send_operation(op, wrong)
-      assert Message.status(send!(op, @user)) == :successful_ok
-      assert is_integer(print!(PrintJob.new(op.printer_uri, pdf()), @user))
+      assert op |> send!(@user) |> Message.status() == :successful_ok
+      assert is_integer(PrintJob.new(op.printer_uri, pdf()) |> print!(@user))
     end
 
     test "concurrent requests use their own credentials", %{https: https} do
-      op = GetPrinterAttributes.new(printer(https, "secure"))
+      op = printer(https, "secure") |> GetPrinterAttributes.new()
 
       results =
         1..20
@@ -763,18 +774,19 @@ defmodule Hippy.Integration.CupsTest do
     test "ipps:// printer URI", %{https: https} do
       uri = String.replace(printer(https, "secure"), "https://", "ipps://")
 
-      assert Message.status(send!(GetPrinterAttributes.new(uri), @user)) == :successful_ok
+      assert uri |> GetPrinterAttributes.new() |> send!(@user) |> Message.status() ==
+               :successful_ok
     end
 
     test "self-signed certificate is rejected when verification is on", %{https: https} do
       capture_log(fn ->
         assert {:error, %Req.TransportError{reason: {:tls_alert, _}}} =
-                 Hippy.send_operation(GetPrinterAttributes.new(printer(https, "raw")))
+                 printer(https, "raw") |> GetPrinterAttributes.new() |> Hippy.send_operation()
       end)
     end
 
     test "a pinned self-signed certificate is accepted (as in the README)", ctx do
-      op = GetPrinterAttributes.new(printer(ctx.https, "raw"))
+      op = printer(ctx.https, "raw") |> GetPrinterAttributes.new()
 
       # CUPS creates its certificate on the first HTTPS connection, which may not have happened
       # yet depending on test order.
@@ -790,8 +802,8 @@ defmodule Hippy.Integration.CupsTest do
         assert to_string(msg) =~ "selfsigned_peer"
       end)
 
-      assert Message.status(send!(op, tls_options(verify_fun: {pinning_verify_fun(pinned), nil}))) ==
-               :successful_ok
+      verify = tls_options(verify_fun: {pinning_verify_fun(pinned), nil})
+      assert op |> send!(verify) |> Message.status() == :successful_ok
 
       capture_log(fn ->
         assert {:error, %Req.TransportError{reason: {:tls_alert, _}}} =
@@ -803,7 +815,7 @@ defmodule Hippy.Integration.CupsTest do
     end
 
     test "receive timeout surfaces as a transport error", %{http: http} do
-      op = PrintJob.new(printer(http, "raw"), :crypto.strong_rand_bytes(25 * 1024 * 1024))
+      op = printer(http, "raw") |> PrintJob.new(:crypto.strong_rand_bytes(25 * 1024 * 1024))
 
       assert {:error, %Req.TransportError{reason: :timeout}} =
                Hippy.send_operation(op, req_options: [receive_timeout: 1])
@@ -870,11 +882,12 @@ defmodule Hippy.Integration.CupsTest do
   end
 
   defp job_attributes!(uri, id, opts \\ []) do
-    Message.job(send!(GetJobAttributes.new(uri, id), opts))
+    GetJobAttributes.new(uri, id) |> send!(opts) |> Message.job()
   end
 
   defp job_ids(uri, which) do
-    send!(GetJobs.new(uri, which_jobs: which))
+    GetJobs.new(uri, which_jobs: which)
+    |> send!()
     |> Message.jobs()
     |> Enum.map(& &1["job-id"])
     |> Enum.sort()
