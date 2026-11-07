@@ -8,6 +8,7 @@ defmodule Hippy.Integration.CupsTest do
 
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureIO
   import ExUnit.CaptureLog
 
   alias Hippy.Message
@@ -140,6 +141,71 @@ defmodule Hippy.Integration.CupsTest do
     end
   end
 
+  # The examples in the README's "What you can do with it" section.
+  describe "README examples" do
+    test "fleet status reports printers that need attention", %{http: http} do
+      fleet = [
+        printer(http, "raw"),
+        printer(http, "held_jobs"),
+        printer(http, "rejecting"),
+        printer(http, "missing"),
+        "ipp://localhost:1/printers/unplugged"
+      ]
+
+      output =
+        capture_io(fn ->
+          fleet
+          |> Hippy.ReadmeFleet.status()
+          |> Enum.each(fn
+            {_uri,
+             {:ok,
+              %{
+                "printer-state" => :idle,
+                "printer-state-reasons" => ["none"],
+                "printer-is-accepting-jobs" => true
+              }}} ->
+              :ok
+
+            {uri, {:ok, printer}} ->
+              IO.puts(
+                "#{uri}: #{printer["printer-state"]} " <>
+                  "(#{Enum.join(printer["printer-state-reasons"], ", ")})"
+              )
+
+            {uri, {:error, error}} ->
+              IO.puts("#{uri}: #{Exception.message(error)}")
+          end)
+        end)
+
+      assert output =~ "/printers/held_jobs: stopped (paused)"
+      assert output =~ "/printers/rejecting: idle (none)"
+      assert output =~ "/printers/missing: IPP error client_error_not_found"
+      assert output =~ "/printers/unplugged: connection refused"
+      refute output =~ "/printers/raw:"
+    end
+
+    test "fleet print sends the job to an available printer", %{http: http} do
+      fleet = [printer(http, "rejecting"), printer(http, "held_jobs"), printer(http, "raw")]
+
+      assert {:ok, uri, job_id} = Hippy.ReadmeFleet.print(fleet, pdf())
+      assert uri == printer(http, "raw")
+      assert is_integer(job_id)
+
+      assert Hippy.ReadmeFleet.print(Enum.take(fleet, 2), pdf()) ==
+               {:error, :no_printer_available}
+    end
+
+    test "print and wait", %{http: http} do
+      assert {:completed, job_id} =
+               Hippy.ReadmePrinting.print_and_wait(
+                 printer(http, "filtered"),
+                 "Hello from Hippy\n"
+               )
+
+      assert is_integer(job_id)
+    end
+  end
+
   describe "CUPS server operations" do
     @queues ~w(filtered held_cancel held_jobs raw rejecting secure)
 
@@ -208,7 +274,9 @@ defmodule Hippy.Integration.CupsTest do
 
       admin = "#{ctx.https}/admin/"
 
-      assert {:error, {:http_error, 401, _}} = Hippy.Server.send_request(req, admin, @anonymous)
+      assert {:error, %Hippy.HTTPError{status: 401}} =
+               Hippy.Server.send_request(req, admin, @anonymous)
+
       assert {:ok, %Message{code: 0}} = Hippy.Server.send_request(req, admin, @admin)
 
       attrs = Message.printer(send!(GetPrinterAttributes.new(printer(ctx.http, name))))
@@ -585,21 +653,22 @@ defmodule Hippy.Integration.CupsTest do
       uri = printer(http, "held_cancel")
       id = print!(PrintJob.new(uri, pdf()))
 
-      assert {:error, {:http_error, 426, _}} = Hippy.send_operation(CancelJob.new(uri, id))
+      assert {:error, %Hippy.HTTPError{status: 426}} =
+               Hippy.send_operation(CancelJob.new(uri, id))
     end
 
     test "anonymous cancel over HTTPS requires authentication", ctx do
       id = print!(PrintJob.new(printer(ctx.http, "held_cancel"), pdf()))
       op = CancelJob.new(printer(ctx.https, "held_cancel"), id)
 
-      assert {:error, {:http_error, 401, _}} = Hippy.send_operation(op, @anonymous)
+      assert {:error, %Hippy.HTTPError{status: 401}} = Hippy.send_operation(op, @anonymous)
     end
 
     test "authenticated user can cancel only their own jobs", ctx do
       anonymous_id = print!(PrintJob.new(printer(ctx.http, "held_cancel"), pdf()))
       uri = printer(ctx.https, "held_cancel")
 
-      assert {:error, {:http_error, 403, _}} =
+      assert {:error, %Hippy.HTTPError{status: 403}} =
                Hippy.send_operation(CancelJob.new(uri, anonymous_id), @user)
 
       id = print!(PrintJob.new(uri, pdf(), job_name: "Mine"), @user)
@@ -616,8 +685,8 @@ defmodule Hippy.Integration.CupsTest do
       op = GetPrinterAttributes.new(printer(https, "secure"))
       wrong = [req_options: @tls ++ [auth: {:basic, "hippy:wrong"}]]
 
-      assert {:error, {:http_error, 401, _}} = Hippy.send_operation(op, @anonymous)
-      assert {:error, {:http_error, 401, _}} = Hippy.send_operation(op, wrong)
+      assert {:error, %Hippy.HTTPError{status: 401}} = Hippy.send_operation(op, @anonymous)
+      assert {:error, %Hippy.HTTPError{status: 401}} = Hippy.send_operation(op, wrong)
       assert Message.status(send!(op, @user)) == :successful_ok
       assert is_integer(print!(PrintJob.new(op.printer_uri, pdf()), @user))
     end
@@ -635,7 +704,7 @@ defmodule Hippy.Integration.CupsTest do
         if opts == @user do
           assert {:ok, %Message{code: 0}} = result
         else
-          assert {:error, {:http_error, 401, _}} = result
+          assert {:error, %Hippy.HTTPError{status: 401}} = result
         end
       end
     end
@@ -803,5 +872,91 @@ defmodule Hippy.Integration.CupsTest do
       "xref\n0 #{count}\n0000000000 65535 f \n" <>
       xref <>
       "trailer\n<< /Size #{count} /Root 1 0 R >>\nstartxref\n#{byte_size(body)}\n%%EOF\n"
+  end
+end
+
+# The README's print_and_wait example, as written there (with a shorter sleep).
+defmodule Hippy.ReadmePrinting do
+  alias Hippy.Operation.{GetJobAttributes, PrintJob}
+
+  def print_and_wait(printer_uri, document) do
+    {:ok, res} = printer_uri |> PrintJob.new(document) |> Hippy.send_operation()
+
+    res
+    |> Hippy.Message.job()
+    |> Map.fetch!("job-id")
+    |> wait_for_job(printer_uri)
+  end
+
+  defp wait_for_job(job_id, printer_uri) do
+    {:ok, res} = printer_uri |> GetJobAttributes.new(job_id) |> Hippy.send_operation()
+
+    case Hippy.Message.job(res) do
+      %{"job-state" => state} when state in [:completed, :canceled, :aborted] ->
+        {state, job_id}
+
+      _ ->
+        Process.sleep(500)
+        wait_for_job(job_id, printer_uri)
+    end
+  end
+end
+
+# The README's MyApp.Fleet example, as written there.
+defmodule Hippy.ReadmeFleet do
+  alias Hippy.Message
+  alias Hippy.Operation.{GetPrinterAttributes, PrintJob}
+
+  @attributes [
+    "printer-state",
+    "printer-state-reasons",
+    "printer-is-accepting-jobs",
+    "queued-job-count"
+  ]
+
+  def status(printer_uris) do
+    printer_uris
+    |> Task.async_stream(&{&1, printer_status(&1)}, timeout: :infinity)
+    |> Enum.map(fn {:ok, result} -> result end)
+  end
+
+  defp printer_status(uri) do
+    with {:ok, res} <-
+           uri
+           |> GetPrinterAttributes.new(requested_attributes: @attributes)
+           |> Hippy.send_operation(timeout: 5_000) do
+      {:ok, Message.printer(res)}
+    end
+  end
+
+  def print(printer_uris, document) do
+    printer_uris
+    |> status()
+    |> Enum.flat_map(fn
+      {uri, {:ok, %{"printer-state" => state, "printer-is-accepting-jobs" => true} = printer}}
+      when state != :stopped ->
+        [{uri, printer["queued-job-count"]}]
+
+      _unavailable ->
+        []
+    end)
+    |> Enum.sort_by(fn {_uri, queued} -> queued end)
+    |> Enum.reduce_while({:error, :no_printer_available}, fn {uri, _queued}, none ->
+      case uri |> PrintJob.new(document) |> Hippy.send_operation() do
+        {:ok, res} ->
+          {:halt, {:ok, uri, Message.job(res)["job-id"]}}
+
+        # The printer refused the job, or couldn't be reached, so nothing was printed.
+        {:error, %error{}} when error in [Hippy.Error, Hippy.HTTPError] ->
+          {:cont, none}
+
+        {:error, %Req.TransportError{reason: :econnrefused}} ->
+          {:cont, none}
+
+        # Anything else, such as a timeout, may have printed: check before trying again.
+        {:error, error} ->
+          {:halt, {:error, {:unknown, uri, error}}}
+      end
+    end)
   end
 end
