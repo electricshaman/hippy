@@ -304,6 +304,8 @@ MyApp.Printing.print_and_wait("ipps://front-desk.local/ipp/print", document)
 # {:completed, 47}
 ```
 
+What `:completed` means depends on who reports it. A printer reporting its own job means the pages have come out. CUPS is a queue in front of the printer, so for a CUPS job it means CUPS has finished sending the job on: for a USB printer, written to the cable. A jam or an empty paper tray after that won't change the job's state, so check the printer's `printer-state-reasons` too if it matters.
+
 ### Check a fleet of printers at once
 
 With more than one printer, Elixir's concurrency makes it easy to look after them all. Ask every printer for its state at the same time. Each request gives up after five seconds, so one unplugged printer doesn't hold up the rest:
@@ -479,6 +481,35 @@ printer
 ```
 
 `HoldJob` keeps a job in the queue until `ReleaseJob`, and `PausePrinter` stops a printer until `ResumePrinter`. `CreateJob` and `SendDocument` build one job from several documents. CUPS only lets a job's owner hold, release or add documents to it, and administrators pause printers (see [Authentication](#authentication)).
+
+### Get notified about events
+
+Printers that support subscriptions (CUPS does; many home printers don't) collect events for you, such as jobs completing or the printer stopping. Subscribe, then fetch new events whenever you like. Each has a sequence number, so nothing is missed between fetches:
+
+```elixir
+alias Hippy.Operation.{CreatePrinterSubscriptions, GetNotifications}
+
+{:ok, res} =
+  printer
+  |> CreatePrinterSubscriptions.new(events: ["printer-state-changed", "job-completed"])
+  |> Hippy.send_operation(req_options: [auth: {:basic, "user:pass"}])
+
+[%{"notify-subscription-id" => id}] = Hippy.Message.subscriptions(res)
+
+{:ok, res} =
+  printer
+  |> GetNotifications.new(id, sequence_numbers: 1)
+  |> Hippy.send_operation(req_options: [auth: {:basic, "user:pass"}])
+
+Hippy.Message.events(res)
+#=> [
+#=>   %{"notify-subscribed-event" => "job-completed", "notify-sequence-number" => 1, "notify-job-id" => 47, ...},
+#=>   %{"notify-subscribed-event" => "printer-state-changed", "notify-sequence-number" => 2,
+#=>     "printer-state" => :stopped, "printer-state-reasons" => ["media-empty-error"], ...}
+#=> ]
+```
+
+Next time, ask for `sequence_numbers: 3`. A printer supports subscriptions if its `operations-supported` includes `:create_printer_subscription`. CUPS only lets the subscription's owner fetch its events, so send both requests authenticated.
 
 ### List the printers on a CUPS server
 

@@ -175,6 +175,16 @@ defmodule Hippy.SendOperationTest do
     end
   end
 
+  test "IANA's names for the subscription operations are accepted" do
+    for {name, id} <- [create_printer_subscriptions: 0x16, create_job_subscriptions: 0x17] do
+      {:ok, _} = Hippy.send_operation(@printer, name, %{"notify-events" => ["job-completed"]})
+      {_path, req} = sent()
+
+      assert req.code == id
+      assert {"notify-events", [keyword: "job-completed"]} in group(req, :subscription)
+    end
+  end
+
   test "unknown operation names return an error" do
     assert Hippy.send_operation(@printer, :print_everything, %{}) ==
              {:error, {:unknown_operation, :print_everything}}

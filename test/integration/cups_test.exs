@@ -15,17 +15,22 @@ defmodule Hippy.Integration.CupsTest do
 
   alias Hippy.Operation.{
     CancelJob,
+    CancelSubscription,
     CreateJob,
+    CreateJobSubscriptions,
+    CreatePrinterSubscriptions,
     CupsGetClasses,
     CupsGetDefault,
     CupsGetPrinters,
     GetJobAttributes,
     GetJobs,
+    GetNotifications,
     GetPrinterAttributes,
     HoldJob,
     PausePrinter,
     PrintJob,
     ReleaseJob,
+    RenewSubscription,
     ResumePrinter,
     SendDocument,
     ValidateJob
@@ -852,6 +857,123 @@ defmodule Hippy.Integration.CupsTest do
       assert uri |> ResumePrinter.new() |> send!(@admin) |> Message.status() == :successful_ok
       assert state.()["printer-state"] == :idle
       assert Hippy.printer_ready?(state.())
+    end
+  end
+
+  describe "subscriptions and notifications" do
+    defp subscribe!(op, opts) do
+      [%{"notify-subscription-id" => id}] = op |> send!(opts) |> Message.subscriptions()
+      id
+    end
+
+    defp events!(uri, id, opts, auth \\ @user) do
+      uri |> GetNotifications.new([id], opts) |> send!(auth) |> Message.events()
+    end
+
+    defp event_names(events), do: Enum.map(events, & &1["notify-subscribed-event"])
+
+    test "a printer subscription collects its events in order, and only new ones", ctx do
+      uri = printer(ctx.https, "raw")
+
+      id =
+        uri
+        |> CreatePrinterSubscriptions.new(events: ["job-created", "job-completed"])
+        |> subscribe!(@user)
+
+      job_id = uri |> PrintJob.new("hello") |> print!(@user)
+      wait_for_job_state(uri, job_id, [:completed], @user)
+
+      events = events!(uri, id, [])
+      assert event_names(events) == ["job-created", "job-completed"]
+      assert Enum.map(events, & &1["notify-sequence-number"]) == [1, 2]
+      assert Enum.all?(events, &(&1["notify-job-id"] == job_id))
+      assert List.last(events)["job-state"] == :completed
+
+      # Only events after the last one seen, and how long to wait before asking again.
+      res = uri |> GetNotifications.new(id, sequence_numbers: 3) |> send!(@user)
+      assert Message.events(res) == []
+      assert is_integer(Message.operation_attributes(res)["notify-get-interval"])
+
+      assert uri
+             |> RenewSubscription.new(id, lease_duration: 120)
+             |> send!(@user)
+             |> Message.status() == :successful_ok
+
+      assert uri |> CancelSubscription.new(id) |> send!(@user) |> Message.status() ==
+               :successful_ok
+
+      assert ipp_error!(GetNotifications.new(uri, id), @user).status == :client_error_not_found
+    end
+
+    test "a job subscription follows one job (CUPS: administrators only)", ctx do
+      uri = printer(ctx.https, "held_cancel")
+      job_id = uri |> PrintJob.new(pdf()) |> print!(@user)
+
+      # CUPS checks Create-Job-Subscriptions without the job's owner, so even the owner is
+      # forbidden; administrators aren't.
+      assert {:error, %Hippy.HTTPError{status: 403}} =
+               uri |> CreateJobSubscriptions.new(job_id) |> Hippy.send_operation(@user)
+
+      id = uri |> CreateJobSubscriptions.new(job_id) |> subscribe!(@admin)
+
+      uri |> HoldJob.new(job_id) |> send!(@user)
+
+      assert [%{"notify-subscribed-event" => "job-state-changed", "job-state" => :pending_held}] =
+               events!(uri, id, [], @admin)
+
+      # CUPS deletes a job subscription, and its events, once the job has ended.
+      uri |> CancelJob.new(job_id) |> send!(@user)
+      assert ipp_error!(GetNotifications.new(uri, id), @admin).status == :client_error_not_found
+    end
+
+    test "the job's owner can subscribe while creating the job", ctx do
+      uri = printer(ctx.https, "held_cancel")
+
+      subscription =
+        {:subscription,
+         [
+           {:keyword, "notify-pull-method", "ippget"},
+           {:keyword, "notify-events", "job-state-changed"}
+         ]}
+
+      res = uri |> PrintJob.new(pdf(), groups: [subscription]) |> send!(@user)
+      job_id = Message.job(res)["job-id"]
+      [%{"notify-subscription-id" => id}] = Message.subscriptions(res)
+
+      uri |> HoldJob.new(job_id) |> send!(@user)
+
+      # Subscribing with the job also reports its creation.
+      events = events!(uri, id, [])
+      assert event_names(events) == ["job-created", "job-state-changed"]
+      assert Enum.all?(events, &(&1["notify-job-id"] == job_id))
+      assert List.last(events)["job-state"] == :pending_held
+
+      uri |> CancelJob.new(job_id) |> send!(@user)
+    end
+
+    test "send_operation/4 takes IANA's names for the subscription operations", ctx do
+      uri = printer(ctx.https, "raw")
+
+      {:ok, res} =
+        Hippy.send_operation(
+          uri,
+          :create_printer_subscriptions,
+          %{"notify-pull-method" => "ippget", "notify-events" => ["job-completed"]},
+          @user
+        )
+
+      assert [%{"notify-subscription-id" => id}] = Message.subscriptions(res)
+      uri |> CancelSubscription.new(id) |> send!(@user)
+    end
+
+    test "only the subscription's owner can collect its notifications", ctx do
+      uri = printer(ctx.https, "raw")
+      id = uri |> CreatePrinterSubscriptions.new() |> subscribe!(@user)
+
+      assert {:error, %Hippy.HTTPError{status: 401}} =
+               uri |> GetNotifications.new(id) |> Hippy.send_operation(@anonymous)
+
+      uri |> CancelSubscription.new(id) |> send!(@user)
     end
   end
 

@@ -156,7 +156,8 @@ defmodule Hippy.Message do
   ## Options
 
     * `:job_attributes` - job attributes the operation always sends, as tuples.
-    * `:groups` - other groups, as `{tag, tuples}`.
+    * `:groups` - other groups, as `{tag, tuples}`. Attributes from `attributes` that belong in
+      a group of the same kind are added to it, rather than to a new group.
     * `:data` - the document.
   """
   def build_request(operation_id, op, attributes \\ [], opts \\ []) do
@@ -176,7 +177,11 @@ defmodule Hippy.Message do
       |> merge(inferred.job)
       |> merge(Map.get(op, :job_attributes, []))
 
-    groups = Keyword.get(opts, :groups, []) ++ inferred.groups ++ Map.get(op, :groups, [])
+    groups =
+      opts
+      |> Keyword.get(:groups, [])
+      |> merge_groups(inferred.groups)
+      |> Kernel.++(Map.get(op, :groups, []))
 
     %__MODULE__{
       code: operation_id,
@@ -203,6 +208,18 @@ defmodule Hippy.Message do
         if List.keymember?(acc, name, 1),
           do: List.keyreplace(acc, name, 1, override),
           else: acc ++ [override]
+    end)
+  end
+
+  # Inferred attributes join a group of the same kind the operation builds itself, such as
+  # Create-Printer-Subscriptions' subscription group, rather than starting another (which would
+  # be a second subscription).
+  defp merge_groups(groups, inferred) do
+    Enum.reduce(inferred, groups, fn {tag, tuples}, acc ->
+      case Enum.find_index(acc, fn {t, _} -> normalize_tag(t) == normalize_tag(tag) end) do
+        nil -> acc ++ [{tag, tuples}]
+        i -> List.update_at(acc, i, fn {t, existing} -> {t, merge(existing, tuples)} end)
+      end
     end)
   end
 
@@ -292,6 +309,19 @@ defmodule Hippy.Message do
 
   @doc "Returns each printer in a response as a map, such as for CUPS-Get-Printers."
   def printers(message), do: groups(message, :printer)
+
+  @doc """
+  Returns each subscription in a response as a map, such as for Create-Printer-Subscriptions
+  (with its `notify-subscription-id`) or Get-Subscriptions.
+  """
+  def subscriptions(message), do: groups(message, :subscription)
+
+  @doc """
+  Returns each event in a Get-Notifications response as a map, in order: what happened
+  (`notify-subscribed-event`), its `notify-sequence-number`, and the printer's or job's
+  attributes at the time, such as `printer-state` or `job-state`.
+  """
+  def events(message), do: groups(message, :event_notification)
 
   @doc "Returns the operation attributes as a map (e.g. `status-message`)."
   def operation_attributes(message), do: group(message, :operation) || %{}
