@@ -19,6 +19,142 @@ def deps do
 end
 ```
 
+## What you can do with it
+
+Hippy talks to any IPP printer directly, or to a CUPS server in front of them. Combined with Elixir's concurrency, that makes it easy to look after a whole fleet.
+
+### Check a fleet of printers at once
+
+Ask every printer for its state at the same time. Each request gives up after five seconds, so one unplugged printer doesn't hold up the rest:
+
+```elixir
+defmodule MyApp.Fleet do
+  alias Hippy.Message
+  alias Hippy.Operation.{GetPrinterAttributes, PrintJob}
+
+  @attributes [
+    "printer-state",
+    "printer-state-reasons",
+    "printer-is-accepting-jobs",
+    "queued-job-count"
+  ]
+
+  def status(printer_uris) do
+    printer_uris
+    |> Task.async_stream(&{&1, printer_status(&1)}, timeout: :infinity)
+    |> Enum.map(fn {:ok, result} -> result end)
+  end
+
+  defp printer_status(uri) do
+    with {:ok, res} <-
+           uri
+           |> GetPrinterAttributes.new(requested_attributes: @attributes)
+           |> Hippy.send_operation(timeout: 5_000) do
+      {:ok, Message.printer(res)}
+    end
+  end
+end
+```
+
+Then report the ones that need attention. Any error once a request is sent is an exception, so `Exception.message/1` describes it:
+
+```elixir
+fleet = [
+  "ipps://front-desk.local/ipp/print",
+  "ipps://warehouse.local/ipp/print",
+  "ipps://loading-dock.local/ipp/print"
+]
+
+fleet
+|> MyApp.Fleet.status()
+|> Enum.each(fn
+  {_uri, {:ok, %{"printer-state" => :idle, "printer-state-reasons" => ["none"],
+                 "printer-is-accepting-jobs" => true}}} ->
+    :ok
+
+  {uri, {:ok, printer}} ->
+    IO.puts("#{uri}: #{printer["printer-state"]} " <>
+      "(#{Enum.join(printer["printer-state-reasons"], ", ")})")
+
+  {uri, {:error, error}} ->
+    IO.puts("#{uri}: #{Exception.message(error)}")
+end)
+
+# ipps://front-desk.local/ipp/print: stopped (media-empty-error)
+# ipps://warehouse.local/ipp/print: idle (toner-low-report)
+# ipps://loading-dock.local/ipp/print: connection refused
+```
+
+### Send each job to the least busy printer
+
+Add a `print/2` to `MyApp.Fleet` that picks the ready printer with the shortest queue (`Hippy.Printer.ready?/1` checks it's accepting jobs and has no errors such as a paper jam), and moves on to the next one if that printer refuses the job. `Hippy.safe_to_resend?/1` decides that for any error, including HTTP problems: it doesn't move on after a timeout, because the printer may have accepted the job anyway, and trying another would print it twice.
+
+```elixir
+  def print(printer_uris, document) do
+    printer_uris
+    |> status()
+    |> Enum.flat_map(fn
+      {uri, {:ok, printer}} -> if Hippy.Printer.ready?(printer), do: [{uri, printer}], else: []
+      {_uri, {:error, _}} -> []
+    end)
+    |> Enum.sort_by(fn {_uri, printer} -> printer["queued-job-count"] end)
+    |> Enum.reduce_while({:error, :no_printer_available}, fn {uri, _printer}, none ->
+      case uri |> PrintJob.new(document) |> Hippy.send_operation() do
+        {:ok, res} ->
+          {:halt, {:ok, uri, Message.job(res)["job-id"]}}
+
+        {:error, error} ->
+          # Move on only if the job definitely wasn't accepted. After a timeout, for example,
+          # it may have printed: stop and check, rather than print it twice.
+          if Hippy.safe_to_resend?(error),
+            do: {:cont, none},
+            else: {:halt, {:error, {:unknown, uri, error}}}
+      end
+    end)
+  end
+```
+
+```elixir
+MyApp.Fleet.print(fleet, label_pdf)
+# {:ok, "ipps://warehouse.local/ipp/print", 1042}
+```
+
+### Print a document and wait for it to finish
+
+```elixir
+defmodule MyApp.Printing do
+  alias Hippy.Operation.{GetJobAttributes, PrintJob}
+
+  def print_and_wait(printer_uri, document) do
+    {:ok, res} = printer_uri |> PrintJob.new(document) |> Hippy.send_operation()
+
+    res
+    |> Hippy.Message.job()
+    |> Map.fetch!("job-id")
+    |> wait_for_job(printer_uri)
+  end
+
+  defp wait_for_job(job_id, printer_uri) do
+    {:ok, res} = printer_uri |> GetJobAttributes.new(job_id) |> Hippy.send_operation()
+
+    case Hippy.Message.job(res) do
+      %{"job-state" => state} when state in [:completed, :canceled, :aborted] ->
+        {state, job_id}
+
+      _ ->
+        Process.sleep(1_000)
+        wait_for_job(job_id, printer_uri)
+    end
+  end
+end
+
+document = File.read!("invoice.pdf")
+MyApp.Printing.print_and_wait("ipps://front-desk.local/ipp/print", document)
+# {:completed, 47}
+```
+
+These examples are run against a real CUPS server in Hippy's integration tests. Behind a CUPS server, `Hippy.Operation.CupsGetPrinters` lists its printers (see below).
+
 ## Configuration
 
 Hippy uses [Req](https://hex.pm/packages/req) for HTTP and requires Elixir 1.15 or later. Extra Req options (authentication, TLS settings, timeouts, etc.) can be passed per request, or for every request through application config. Options given per request are merged over the configured ones:
@@ -53,18 +189,18 @@ An IPP error (a client-error or server-error status) is returned as `{:error, %H
   Hippy.Operation.PrintJob.new(printer_uri, doc, document_format: "application/x-nope")
   |> Hippy.send_operation()
 
-Hippy.Response.unsupported(error.response)
+Hippy.Message.unsupported(error.response)
 %{"document-format" => "application/x-nope"}
 ```
 
-HTTP errors are `{:error, {:http_error, status, body}}`.
+HTTP errors (such as 401 Unauthorized) are `{:error, %Hippy.HTTPError{status: 401}}`, and a printer that can't be reached or times out gives Req's exceptions, such as `{:error, %Req.TransportError{reason: :timeout}}`. Every error once a request is sent is an exception, so `Exception.message/1` describes it.
 
 **`{:ok, response}` doesn't mean every setting was applied.** A printer can accept a job but ignore or change attributes it doesn't support, for example printing one-sided when asked for `two-sided-long-edge`. It then returns `:successful_ok_ignored_or_substituted_attributes`, which is still `{:ok, response}`, and lists the attributes in the response's unsupported group. When the settings matter, check it:
 
 ```elixir
 {:ok, res} = Hippy.send_operation(op)
 
-case Hippy.Response.unsupported(res) do
+case Hippy.Message.unsupported(res) do
   empty when map_size(empty) == 0 -> :printed_as_asked
   ignored -> {:printed_without, ignored}   # e.g. %{"sides" => "two-sided-long-edge"}
 end
@@ -74,16 +210,16 @@ end
 
 ### Authentication
 
-Printers and CUPS servers that require authentication return an HTTP error instead of an IPP response, as `{:error, {:http_error, status, body}}`. Pass credentials with `req_options: [auth: {:basic, "user:pass"}]`, over HTTPS (an `https://` or `ipps://` printer URI).
+Printers and CUPS servers that require authentication return an HTTP error instead of an IPP response, as `{:error, %Hippy.HTTPError{status: 401}}`. Pass credentials with `req_options: [auth: {:basic, "user:pass"}]`, over HTTPS (an `https://` or `ipps://` printer URI).
 
 With its default policy, CUPS lets anyone print and query, but job management such as Cancel-Job needs authentication when the request comes from another machine:
 
 | Request | Result |
 |---|---|
-| Cancel-Job over plain HTTP | `{:error, {:http_error, 426, _}}` (Upgrade Required: use HTTPS) |
-| Cancel-Job over HTTPS without credentials | `{:error, {:http_error, 401, _}}` |
-| Cancel-Job for another user's job | `{:error, {:http_error, 403, _}}` |
-| Cancel-Job for your own job, authenticated | `{:ok, %Hippy.Response{status_code: :successful_ok}}` |
+| Cancel-Job over plain HTTP | `{:error, %Hippy.HTTPError{status: 426}}` (Upgrade Required: use HTTPS) |
+| Cancel-Job over HTTPS without credentials | `{:error, %Hippy.HTTPError{status: 401}}` |
+| Cancel-Job for another user's job | `{:error, %Hippy.HTTPError{status: 403}}` |
+| Cancel-Job for your own job, authenticated | `{:ok, %Hippy.Message{}}`, with `Hippy.Message.status/1` `:successful_ok` |
 
 ### Self-signed certificates
 
@@ -93,7 +229,7 @@ Certificates are verified by default. CUPS and many printers use a self-signed c
 - pin the server's own certificate (for CUPS, `/etc/cups/ssl/<hostname>.crt`):
 
 ```elixir
-[{:Certificate, pinned, _}] = :public_key.pem_decode(File.read!("cups.crt"))
+[{:Certificate, pinned, _}] = "cups.crt" |> File.read!() |> :public_key.pem_decode()
 
 verify_fun = fn
   cert, {:bad_cert, :selfsigned_peer}, state ->
@@ -115,55 +251,42 @@ Hippy.send_operation(op,
 
 ### Timeouts and retries
 
-Req waits 15 seconds for a response by default. Sending a large document to a slow printer can take longer, so raise it with `req_options: [receive_timeout: 60_000]`.
+Req waits 15 seconds for a response by default. Sending a large document to a slow printer can take longer, so raise it with `timeout: 60_000`, which sets both the connect and the response timeout.
 
-A timeout returns `{:error, %Req.TransportError{reason: :timeout}}`, but **the printer may still have accepted the job**. Hippy never retries a request, so a Print-Job is never submitted twice by accident. Don't blindly resend after a timeout either: check whether the job exists first, e.g. with `Hippy.Operation.GetJobs.new(uri, which_jobs: :not_completed)` and a unique `job_name`.
+A timeout returns `{:error, %Req.TransportError{reason: :timeout}}`, but **the printer may still have accepted the job**. Hippy never retries a request, so a Print-Job is never submitted twice by accident. Don't blindly resend after a timeout either: check whether the job exists first, e.g. with `Hippy.Operation.GetJobs.new(uri, which_jobs: :not_completed)` and a unique `job_name`. `Hippy.safe_to_resend?/1` tells you which errors are safe to resend, for any error `send_operation` returns: IPP and HTTP 4xx errors, refused connections and failed TLS handshakes are; timeouts, closed connections and HTTP 5xx errors aren't.
 
 ## Usage Examples
 
 ### Print a PDF document
+
 ```elixir
-doc = File.read!("tps_report.pdf") 
 printer_uri = "http://localhost:631/printers/HP_Color_LaserJet"
 
-Hippy.Operation.PrintJob.new(printer_uri, doc,
-  job_name: "TPS Report",
-  document_format: "application/pdf",
-  orientation: Hippy.IPP.Orientation.portrait()
-)
-|> Hippy.send_operation()
+{:ok, res} =
+  "tps_report.pdf"
+  |> File.read!()
+  |> then(&Hippy.Operation.PrintJob.new(printer_uri, &1, job_name: "TPS Report"))
+  |> Hippy.send_operation()
 
-{:ok,
- %Hippy.Response{
-   job_attributes: [
-     [
-       {:uri, "job-uri", "ipp://localhost:631/jobs/47"},
-       {:integer, "job-id", 47},
-       {:enum, "job-state", :pending},
-       {:text_without_language, "job-state-message", ""},
-       {:keyword, "job-state-reasons", "none"}
-     ]
-   ],
-   operation_attributes: [
-     [
-       {:charset, "attributes-charset", "utf-8"}, 
-       {:natural_language, "attributes-natural-language", "en"}
-     ]
-   ],
-   request_id: 1,
-   status_code: :successful_ok,
-   version: %Hippy.IPPVersion{major: 1, minor: 1}
- }}
+Hippy.Message.job(res)
+%{
+  "job-id" => 47,
+  "job-state" => :pending,
+  "job-state-message" => "",
+  "job-state-reasons" => ["none"],
+  "job-uri" => %URI{scheme: "ipp", host: "localhost", port: 631, path: "/jobs/47", ...}
+}
 ```
+
 ### Stream a large document
 
 A document can also be an `Enumerable` of binaries, which is sent as it's read (with chunked transfer encoding) instead of being loaded into memory:
 
 ```elixir
 # Elixir 1.16 and later. On 1.15, File.stream!("big.pdf", [], 64_000).
-Hippy.Operation.PrintJob.new(printer_uri, File.stream!("big.pdf", 64_000),
-  document_format: "application/pdf"
-)
+"big.pdf"
+|> File.stream!(64_000)
+|> then(&Hippy.Operation.PrintJob.new(printer_uri, &1, document_format: "application/pdf"))
 |> Hippy.send_operation()
 ```
 
@@ -192,13 +315,13 @@ Hippy.Operation.PrintJob.new(printer_uri, doc,
 
 Maps are collections and lists are sets. For attributes that can be a keyword or a name (such as `media`), a value spelt like a keyword is sent as one, and anything else as a name. `{syntax, value}` gives the syntax explicitly, and is needed for attributes the registry doesn't know, which go in the operation's main group (job attributes for Print-Job). See `Hippy.AttributeInference`.
 
-To control the syntax and group yourself, every operation also accepts `operation_attributes:`, and Print-Job `job_attributes:`, as `{syntax, name, value}` tuples, in the same form responses are decoded to. Other attribute groups go in `groups:`, as `{tag, attributes}`. These replace an attribute of the same name from `attributes:` or Hippy's defaults. See `Hippy.Encoder.encode/1` for the supported syntaxes.
+To control the syntax and group yourself, every operation also accepts `operation_attributes:`, and Print-Job `job_attributes:`, as `{syntax, name, value}` tuples. Other attribute groups go in `groups:`, as `{tag, tuples}`. These replace an attribute of the same name from `attributes:` or Hippy's defaults. See `Hippy.Encoder.encode/1` for the supported syntaxes.
 
 ```elixir
 Hippy.Operation.PrintJob.new(printer_uri, doc,
   job_attributes: [{:integer, "copies", 2}, {:keyword, "x-acme-finish", "matte"}],
   groups: [
-    {:subscription_attributes,
+    {:subscription,
      [{:keyword, "notify-pull-method", "ippget"}, {:keyword, "notify-events", "job-completed"}]}
   ]
 )
@@ -228,42 +351,18 @@ Hippy.send_operation("ipps://localhost:631/printers/front_desk", :cups_add_modif
 ```
 
 ### Get recently completed jobs
-```elixir
-Hippy.Operation.GetJobs.new("http://localhost:631/printers/HP_Color_LaserJet")
-|> Hippy.send_operation()
 
-{:ok,
- %Hippy.Response{
-   job_attributes: [
-     [
-       {:name_without_language, "job-name", "TPS Report"},
-       {:name_without_language, "job-originating-user-name", "anonymous"},
-       {:integer, "job-id", 47},
-       {:enum, "job-state", :completed},
-       {:keyword, "job-state-reasons", "processing-to-stop-point"},
-       {:integer, "job-media-sheets-completed", 8}
-     ],
-     [
-       {:name_without_language, "job-name", "Untitled Job"},
-       {:name_without_language, "job-originating-user-name", "anonymous"},
-       {:integer, "job-id", 46},
-       {:enum, "job-state", :completed},
-       {:keyword, "job-state-reasons", "processing-to-stop-point"},
-       {:integer, "job-media-sheets-completed", 2}
-     ],
-     # ...
-   ],
-   operation_attributes: [
-     [
-       {:charset, "attributes-charset", "utf-8"},
-       {:natural_language, "attributes-natural-language", "en"},
-       {:integer, "limit", 500}
-     ]
-   ],
-   request_id: 1,
-   status_code: :successful_ok,
-   version: %Hippy.IPPVersion{major: 1, minor: 1}
- }}
+```elixir
+{:ok, res} =
+  "http://localhost:631/printers/HP_Color_LaserJet"
+  |> Hippy.Operation.GetJobs.new()
+  |> Hippy.send_operation()
+
+Hippy.Message.jobs(res)
+[
+  %{"job-id" => 47, "job-name" => "TPS Report", "job-state" => :completed, ...},
+  %{"job-id" => 46, "job-name" => "Untitled Job", "job-state" => :completed, ...}
+]
 ```
 
 ### List the printers on a CUPS server
@@ -272,45 +371,48 @@ CUPS-Get-Printers is sent to the server rather than a printer. CUPS includes cla
 
 ```elixir
 {:ok, res} =
-  Hippy.Operation.CupsGetPrinters.new("ipp://localhost:631/",
-    requested_attributes: ["printer-name", "printer-state"]
-  )
+  "ipp://localhost:631/"
+  |> Hippy.Operation.CupsGetPrinters.new(requested_attributes: ["printer-name", "printer-state"])
   |> Hippy.send_operation()
 
-Hippy.Response.printers(res)
+Hippy.Message.printers(res)
 [
   %{"printer-name" => "HP_Color_LaserJet", "printer-state" => :idle},
   %{"printer-name" => "Label_Printer", "printer-state" => :stopped}
 ]
 ```
 
-### Convert the response to maps for easier access by key
+## Reading responses
 
-`Hippy.Response` has functions that return attributes as maps of names to values:
+A response is a `Hippy.Message`, holding the message exactly as the printer sent it. Read its attributes as maps of names to values:
+
+- `Hippy.Message.job/1`: the job, for responses about one job, such as Print-Job and Get-Job-Attributes.
+- `Hippy.Message.jobs/1`: a map per job, for Get-Jobs.
+- `Hippy.Message.printer/1`: the printer, for Get-Printer-Attributes.
+- `Hippy.Message.printers/1`: a map per printer, for CUPS-Get-Printers.
+- `Hippy.Message.operation_attributes/1` and `Hippy.Message.unsupported/1`: operation attributes (such as `status-message`) and attributes the printer didn't support.
+- `Hippy.Message.group/2` and `Hippy.Message.groups/2`: any group, by tag.
+- `Hippy.Message.status/1`: the status, e.g. `:successful_ok`.
+
+In maps, values are converted for convenience: enums are atoms, URIs are `URI`s, dates are `DateTime`s, booleans are `true`/`false` and collections are maps. Attributes and collection members the IANA registry defines as sets, such as `job-state-reasons`, are always lists, even with one value.
+
+The message itself is the wire: groups in the order they were sent, each attribute as `{name, [{syntax, value}, ...]}` with values exactly as sent, so nothing is lost or reinterpreted, and encoding it again gives the same bytes:
 
 ```elixir
-{:ok, res} = Hippy.Operation.PrintJob.new(printer_uri, doc) |> Hippy.send_operation()
-
-Hippy.Response.job(res)
-%{
-  "job-id" => 47,
-  "job-state" => :pending,
-  "job-state-message" => "",
-  "job-state-reasons" => ["none"],
-  "job-uri" => %URI{scheme: "ipp", host: "localhost", port: 631, path: "/jobs/47", ...}
+%Hippy.Message{
+  version: {1, 1},
+  code: 0x0000,
+  request_id: 1,
+  groups: [
+    {:operation, [{"attributes-charset", [charset: "utf-8"]}, ...]},
+    {:job, [{"job-id", [integer: 47]}, {"job-state", [enum: 3]}, {"job-state-reasons", [keyword: "none"]}, ...]}
+  ],
+  data: ""
 }
 
-Hippy.Response.job(res)["job-id"]
-47
+bin |> Hippy.Message.decode() |> Hippy.Message.encode() == bin
+true
 ```
-
-- `Hippy.Response.job/1`: the job, for responses about one job, such as Print-Job and Get-Job-Attributes.
-- `Hippy.Response.jobs/1`: a map per job, for Get-Jobs.
-- `Hippy.Response.printer/1`: the printer, for Get-Printer-Attributes.
-- `Hippy.Response.printers/1`: a map per printer, for CUPS-Get-Printers.
-- `Hippy.Response.operation/1` and `Hippy.Response.unsupported/1`: operation attributes (such as `status-message`) and attributes the printer didn't support.
-
-Attributes and collection members the IANA registry defines as sets, such as `job-state-reasons`, are always lists, even with one value. Other attributes are a single value, or a list if a printer sends several anyway. `Hippy.AttributeGroup.to_map/1` converts any list of attribute tuples the same way.
 
 ## Development
 

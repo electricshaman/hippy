@@ -45,10 +45,41 @@ defmodule Hippy do
     * `:operation_attributes`, `:job_attributes` and `:groups` - attributes given explicitly as
       `{syntax, name, value}`, as for operations (see `Hippy.Message.build_request/4`).
     * `:charset` and `:language` - default to `"utf-8"` and `"en"`.
-    * `:req_options` and `:endpoint`, as for `send_operation/2`.
+    * `:timeout`, `:req_options` and `:endpoint`, as for `send_operation/2`.
 
   Returns the same results as `send_operation/2`, or `{:error, {:unknown_operation, name}}` for
   an operation name Hippy doesn't know (in which case nothing is sent).
   """
   defdelegate send_operation(uri, operation, attributes, opts \\ []), to: Hippy.Server
+
+  @http_refused 400..499
+  @not_delivered [:econnrefused, :nxdomain, :ehostunreach, :enetunreach]
+
+  @doc """
+  Returns whether a request that failed definitely wasn't accepted, so sending it again (for
+  example to another printer) can't print it twice.
+
+  Takes any error `send_operation/2` or `send_operation/4` returns, including HTTP problems:
+
+  | Error | Safe to resend? |
+  |---|---|
+  | `Hippy.Error` (the printer answered with an IPP error, e.g. not accepting jobs) | yes |
+  | `Hippy.HTTPError` with a 4xx status (e.g. 401, 403, 404, 426) | yes |
+  | `Hippy.HTTPError` with a 5xx status (a server or proxy error, which can happen after the job was accepted) | no |
+  | `Req.TransportError` for a connection that was never made (refused, host not found, unreachable, TLS handshake failed) | yes |
+  | `Req.TransportError` for a timeout or a closed connection, which may have been received | no |
+  | errors from before anything is sent, such as `{:unknown_operation, name}` | yes |
+  | anything else | no |
+
+  When it returns `false`, the job may have printed: check (e.g. with Get-Jobs) before sending it
+  again.
+  """
+  def safe_to_resend?(%Hippy.Error{}), do: true
+  def safe_to_resend?(%Hippy.HTTPError{status: status}), do: status in @http_refused
+  def safe_to_resend?(%Req.TransportError{reason: reason}) when reason in @not_delivered, do: true
+  def safe_to_resend?(%Req.TransportError{reason: {:tls_alert, _}}), do: true
+  def safe_to_resend?(:printer_uri_required), do: true
+  def safe_to_resend?({:unknown_operation, _}), do: true
+  def safe_to_resend?({:unsupported_uri_scheme, _}), do: true
+  def safe_to_resend?(_error), do: false
 end

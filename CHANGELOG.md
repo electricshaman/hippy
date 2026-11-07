@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Upgrading from 0.6
+
+Responses and requests are now `%Hippy.Message{}`, which holds a message exactly as it's sent
+(see "Breaking changes" below). Most code only needs the first few rows:
+
+| 0.6 | 0.7 |
+|---|---|
+| `Hippy.Response.job(res)`, `jobs/1`, `printer/1`, `printers/1`, `unsupported/1` | `Hippy.Message.job(res)`, … (the `Hippy.Response` versions still work, deprecated) |
+| `Hippy.Response.operation(res)` | `Hippy.Message.operation_attributes(res)` |
+| `res.status_code` | `Hippy.Message.status(res)` |
+| `AttributeGroup.to_map(res.printer_attributes)` | `Hippy.Message.printer(res)` |
+| `res.job_attributes`, `res.printer_attributes`, … (tuples) | `Hippy.Message.jobs(res)`, `printers(res)`, … (maps), or `res.groups` for the exact attributes |
+| `Hippy.Request.new(op_id, op, attributes, fields)` in a custom operation | `Hippy.Message.build_request(op_id, op, attributes, opts)` (`Request.new/4` still works, deprecated) |
+| `%Hippy.Request{operation_attributes: …, job_attributes: …}` | `Hippy.Message.build_request/4`, or `%Hippy.Message{code: …, groups: [operation: …, job: …]}` |
+| `groups: [{:subscription_attributes, …}]` | `groups: [{:subscription, …}]` (the old names still work) |
+| `raw: true` | not needed: messages are always exact |
+| `Hippy.Decoder.decode(bin)` | `Hippy.Message.decode(bin)` (returns a message) |
+| `{:error, {:http_error, status, body}}` | `{:error, %Hippy.HTTPError{status: status, body: body}}` |
+
 ### Breaking changes
 
 - Requests and responses are `Hippy.Message` structs, holding the message exactly as it's sent
@@ -18,9 +37,22 @@
     are deprecated.
   - `groups:` takes the message's group names (`:printer`, `:subscription`, ...); the old
     `:printer_attributes`-style names still work.
+- HTTP errors are `{:error, %Hippy.HTTPError{status: ..., body: ...}}` instead of
+  `{:error, {:http_error, status, body}}`. Every error once a request is sent is now an
+  exception (`Hippy.Error`, `Hippy.HTTPError` or Req's), so `Exception.message/1` describes it.
 
 ### Added
 
+- `Hippy.safe_to_resend?/1` says whether a failed request definitely wasn't accepted, so sending
+  it again (e.g. to another printer) can't print twice. It takes any error `send_operation`
+  returns: IPP errors, HTTP 4xx errors, refused connections and failed TLS handshakes are safe;
+  timeouts, closed connections and HTTP 5xx errors aren't.
+- `Hippy.Printer.ready?/1` says whether a printer can take a job: accepting jobs, not stopped,
+  and no error-level `printer-state-reasons` (following RFC 8011's severity suffixes).
+- `timeout:` on `Hippy.send_operation/2,4` and `Hippy.Server.send_request/3` sets how long to
+  wait, both to connect and for the response.
+- `Hippy.Operation.GetPrinterAttributes` takes `requested_attributes:`, like the other query
+  operations.
 - `Hippy.Message`, one struct for IPP requests and responses, holding a message exactly as it's
   sent: groups in order (repeated groups and tags IANA hasn't assigned included), each
   attribute as `{name, [{syntax, value}, ...]}`, and values as on the wire.

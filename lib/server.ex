@@ -4,14 +4,18 @@ defmodule Hippy.Server do
   @doc """
   Sends an operation to a printer and decodes the response.
 
-  Returns `{:ok, %Hippy.Message{}}`, or `{:error, %Hippy.Error{}}` when the printer returns an
-  IPP error (a client-error or server-error status, such as `:client_error_not_found`). The
-  error keeps the whole response.
+  Returns `{:ok, %Hippy.Message{}}`, or `{:error, error}` where `error` is an exception:
+
+    * `Hippy.Error` when the printer returns an IPP error (a client-error or server-error
+      status, such as `:client_error_not_found`). It keeps the whole response.
+    * `Hippy.HTTPError` when it answers with an HTTP error instead, e.g. 401 Unauthorized.
+    * Req's exceptions, such as `Req.TransportError`, when it can't be reached or times out.
+
+  So `Exception.message/1` describes any error once the request is sent.
 
   `{:ok, response}` can still mean the printer ignored or changed some attributes it doesn't
   support (status `:successful_ok_ignored_or_substituted_attributes`).
-  `Hippy.Message.unsupported/1` lists them. HTTP errors are `{:error, {:http_error, status, body}}`, and
-  transport errors are Req's exceptions (e.g. `{:error, %Req.TransportError{}}`).
+  `Hippy.Message.unsupported/1` lists them.
 
   The request is sent to the operation's `printer_uri`, or `server_uri` for operations addressed
   to the server such as `Hippy.Operation.CupsGetPrinters` (`ipp` and `ipps` are sent over `http`
@@ -19,8 +23,10 @@ defmodule Hippy.Server do
 
   ## Options
 
-    * `:req_options` - options for `Req` (authentication, TLS, timeouts, etc.) for this request,
-      merged over `config :hippy, req_options: [...]`. For example
+    * `:timeout` - how long to wait, in milliseconds, both to connect and for the response.
+      Req's defaults apply otherwise (15 seconds for the response).
+    * `:req_options` - options for `Req` (authentication, TLS, etc.) for this request, merged
+      over `config :hippy, req_options: [...]`. For example
       `req_options: [auth: {:basic, "user:pass"}]`.
     * `:endpoint` - the URL to send the request to, instead of the one derived from
       `printer_uri`.
@@ -108,7 +114,7 @@ defmodule Hippy.Server do
   @doc """
   Sends a request message to an endpoint URL and decodes the response.
 
-  Takes the same `:req_options` option as `send_operation/2`.
+  Takes the same `:timeout` and `:req_options` options as `send_operation/2`.
   """
   def send_request(%Hippy.Message{} = message, endpoint, opts \\ []) do
     message = %{
@@ -116,14 +122,14 @@ defmodule Hippy.Server do
       | request_id: message.request_id || System.unique_integer([:positive, :monotonic])
     }
 
-    case post(endpoint, Hippy.Encoder.encode(message), Keyword.get(opts, :req_options, [])) do
+    case post(endpoint, Hippy.Encoder.encode(message), opts) do
       {:ok, %Req.Response{status: 200, body: body}} ->
         body
         |> Hippy.Message.decode()
         |> Hippy.Error.from_response()
 
       {:ok, %Req.Response{status: status, body: body}} ->
-        {:error, {:http_error, status, body}}
+        {:error, %Hippy.HTTPError{status: status, body: body}}
 
       {:error, _} = error ->
         error
@@ -177,13 +183,32 @@ defmodule Hippy.Server do
     {:error, {:unsupported_uri_scheme, scheme}}
   end
 
-  defp post(url, body, req_options) do
+  defp post(url, body, opts) do
     # Req.merge/2 combines headers rather than replacing them, so configured headers don't drop
     # the IPP content type. POSTs are not retried by Req by default, which we rely on so a
     # Print-Job is never submitted twice.
     Req.new(body: body, headers: [{"content-type", "application/ipp"}], decode_body: false)
     |> Req.merge(Application.get_env(:hippy, :req_options, []))
-    |> Req.merge(req_options)
+    |> Req.merge(req_options(opts))
     |> Req.post(url: url)
+  end
+
+  # :timeout sets both the connect and receive timeouts, unless req_options sets them.
+  defp req_options(opts) do
+    req_options = Keyword.get(opts, :req_options, [])
+
+    case Keyword.fetch(opts, :timeout) do
+      {:ok, timeout} ->
+        req_options
+        |> Keyword.put_new(:receive_timeout, timeout)
+        |> Keyword.update(
+          :connect_options,
+          [timeout: timeout],
+          &Keyword.put_new(&1, :timeout, timeout)
+        )
+
+      :error ->
+        req_options
+    end
   end
 end
