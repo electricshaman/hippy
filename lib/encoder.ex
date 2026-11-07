@@ -1,7 +1,5 @@
 defmodule Hippy.Encoder do
-  @moduledoc """
-  Functions for handling binary encoding of an IPP request.
-  """
+  @moduledoc false
 
   alias Hippy.IPP.{DelimiterTag, ResolutionUnit, ValueTag}
 

@@ -1,12 +1,11 @@
 defmodule Hippy.AttributeGroup do
-  @moduledoc """
-  Contains functions for working with attribute groups.
+  @moduledoc false
 
-  `to_map/1` returns a group as a map of attribute names to values. Attributes the IANA registry
-  defines as sets (such as `job-state-reasons`, or `finishings-col`'s `folding` member) are always
-  lists, even with a single value.
-  """
+  # Used by Hippy.Message: a group of {syntax, name, value} tuples as a map.
+  @doc false
+  def compact_group(group), do: group_to_map(group)
 
+  @deprecated "Use Hippy.Message.to_map/1 instead"
   def to_map([]) do
     Map.new()
   end
@@ -23,6 +22,7 @@ defmodule Hippy.AttributeGroup do
     {:error, :bad_attribute_group}
   end
 
+  @deprecated "Use Hippy.Message.groups/2 and Hippy.Message.to_map/1 instead"
   def to_map([head | _] = groups, index) when is_list(head) and is_list(groups) do
     case Enum.at(groups, index) do
       nil -> {:error, :bad_attribute_group}

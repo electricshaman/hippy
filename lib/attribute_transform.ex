@@ -1,7 +1,5 @@
 defmodule Hippy.AttributeTransform do
-  @moduledoc """
-  Functions for handling attribute transformations in an IPP response.
-  """
+  @moduledoc false
 
   def handle_attribute({:enum, name, value}) do
     # Leave the raw integer in place for enums or values we don't know about

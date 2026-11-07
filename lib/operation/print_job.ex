@@ -3,7 +3,7 @@ defmodule Hippy.Operation.PrintJob do
   Represents a request to print a document using a printer on the IPP server.
 
   The document is a binary, or an `Enumerable` of binaries, which is sent as it's read rather
-  than loaded into memory (see `Hippy.Encoder.encode/1`). For a file, stream it in chunks:
+  than loaded into memory (see `Hippy.Message.encode/1`). For a file, stream it in chunks:
   `File.stream!(path, 64_000)` on Elixir 1.16 and later, or `File.stream!(path, [], 64_000)` on
   1.15. (Without a chunk size, `File.stream!/1` reads by line, which for a binary file such as a
   PDF can mean one very large chunk.)
@@ -16,7 +16,7 @@ defmodule Hippy.Operation.PrintJob do
     * `:orientation` - an `Hippy.IPP.Orientation` value, defaults to portrait.
     * `:charset` and `:language` - default to `"utf-8"` and `"en"`.
     * `:operation_attributes` and `:job_attributes` - extra attributes for each group, as
-      `{syntax, name, value}` tuples (see `Hippy.Encoder.encode/1`). Each replaces an attribute
+      `{syntax, name, value}` tuples (see `Hippy.Message.encode/1`). Each replaces an attribute
       of the same name that Hippy would otherwise send.
     * `:groups` - other attribute groups, as `{tag, attributes}` (see `Hippy.Message`), e.g. a
       `:subscription` group to be notified about the job.

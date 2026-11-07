@@ -3,7 +3,7 @@ defmodule Hippy.Operation.GetJobAttributes do
   Represents a request to get job attributes for an existing job for a printer on the IPP server.
 
   Extra attributes can be sent with the `:operation_attributes` option, as `{syntax, name, value}`
-  tuples (see `Hippy.Encoder.encode/1`). Each replaces an attribute of the same name that Hippy
+  tuples (see `Hippy.Message.encode/1`). Each replaces an attribute of the same name that Hippy
   would otherwise send.
   """
 

@@ -172,6 +172,7 @@ defmodule Hippy.IPP.Enum do
 end
 
 defmodule Hippy.ValueError do
+  @moduledoc false
   defexception [:value]
 
   def message(exception) do
@@ -180,6 +181,7 @@ defmodule Hippy.ValueError do
 end
 
 defmodule Hippy.EnumError do
+  @moduledoc false
   defexception [:name]
 
   def message(exception) do

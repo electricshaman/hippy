@@ -45,8 +45,8 @@ defmodule Hippy.MessageTest do
   test "status and operation as atoms, or integers when unknown" do
     assert Message.status(%Message{code: 0x0406}) == :client_error_not_found
     assert Message.status(%Message{code: 0x04FF}) == 0x04FF
-    assert Message.operation(%Message{code: 0x0002}) == :print_job
-    assert Message.operation(%Message{code: 0x7777}) == 0x7777
+    assert Message.operation_name(%Message{code: 0x0002}) == :print_job
+    assert Message.operation_name(%Message{code: 0x7777}) == 0x7777
   end
 
   test "generated messages round-trip in both directions" do

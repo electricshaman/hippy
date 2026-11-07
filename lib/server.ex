@@ -1,4 +1,8 @@
 defmodule Hippy.Server do
+  @moduledoc false
+
+  # Hippy's public functions delegate here; see Hippy for their docs.
+
   @supported_schemes ["ipp", "ipps", "http", "https"]
 
   @doc """
@@ -42,7 +46,7 @@ defmodule Hippy.Server do
   def send_operation(op, opts) when is_list(opts) do
     with {:ok, endpoint} <- endpoint(op, opts) do
       Hippy.Operation.build_request(op)
-      |> send_request(endpoint, opts)
+      |> send_message(endpoint, opts)
     end
   end
 
@@ -75,7 +79,7 @@ defmodule Hippy.Server do
 
       operation_id
       |> Hippy.Message.build_request(op, [], data: Keyword.get(opts, :document, <<>>))
-      |> send_request(endpoint, opts)
+      |> send_message(endpoint, opts)
     end
   end
 
@@ -111,12 +115,10 @@ defmodule Hippy.Server do
 
   defp put_target(op, _uri, :server), do: op
 
-  @doc """
-  Sends a request message to an endpoint URL and decodes the response.
+  @deprecated "Use Hippy.send_message/3 instead"
+  def send_request(message, endpoint, opts \\ []), do: send_message(message, endpoint, opts)
 
-  Takes the same `:timeout` and `:req_options` options as `send_operation/2`.
-  """
-  def send_request(%Hippy.Message{} = message, endpoint, opts \\ []) do
+  def send_message(%Hippy.Message{} = message, endpoint, opts \\ []) do
     message = %{
       message
       | request_id: message.request_id || System.unique_integer([:positive, :monotonic])
