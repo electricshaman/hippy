@@ -131,6 +131,60 @@ defmodule Hippy.ServerTest do
     end
   end
 
+  describe "IPP status" do
+    defp respond_with(status, message \\ nil) do
+      message_attr =
+        if message,
+          do: <<0x41, 14::16, "status-message", byte_size(message)::16, message::binary>>,
+          else: <<>>
+
+      body =
+        <<1, 1, status::16, 0, 0, 0, 1, 0x01, 0x47, 18::16, "attributes-charset", 5::16, "utf-8">> <>
+          message_attr <> <<0x03>>
+
+      Req.Test.stub(Server, &Plug.Conn.send_resp(&1, 200, body))
+    end
+
+    test "client and server errors are returned as Hippy.Error, with the response" do
+      respond_with(0x0406, "The printer or class does not exist.")
+
+      assert {:error, %Hippy.Error{status: :client_error_not_found} = error} =
+               Server.send_operation(GetJobs.new(@endpoint))
+
+      assert error.message == "The printer or class does not exist."
+      assert %Hippy.Response{status_code: :client_error_not_found} = error.response
+
+      assert Exception.message(error) ==
+               "IPP error client_error_not_found: The printer or class does not exist."
+
+      respond_with(0x0506)
+
+      assert {:error, %Hippy.Error{status: :server_error_not_accepting_jobs, message: nil}} =
+               Server.send_operation(GetJobs.new(@endpoint))
+    end
+
+    test "successful statuses, including ones with a warning, are ok" do
+      respond_with(0x0001)
+
+      assert {:ok, %Hippy.Response{status_code: :successful_ok_ignored_or_substituted_attributes}} =
+               Server.send_operation(GetJobs.new(@endpoint))
+    end
+
+    test "error statuses Hippy doesn't know are still errors, and raw: true works" do
+      respond_with(0x04FF)
+
+      assert {:error, %Hippy.Error{status: 0x04FF} = error} =
+               Server.send_operation(GetJobs.new(@endpoint))
+
+      assert Exception.message(error) == "IPP error 0x04FF"
+
+      respond_with(0x0406)
+
+      assert {:error, %Hippy.Error{status: 0x0406}} =
+               Server.send_operation(GetJobs.new(@endpoint), raw: true)
+    end
+  end
+
   test "non-200 HTTP responses return an error" do
     Req.Test.stub(Server, &Plug.Conn.send_resp(&1, 401, "Unauthorized"))
 

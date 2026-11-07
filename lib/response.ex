@@ -62,6 +62,10 @@ defmodule Hippy.Response do
 
   @doc """
   Returns the attributes the printer didn't support as a map, with the values that were sent.
+
+  A printer can accept a request but ignore or change attributes it doesn't support (status
+  `:successful_ok_ignored_or_substituted_attributes`), so check this when the settings matter.
+  It's empty when every attribute was applied.
   """
   def unsupported(%__MODULE__{unsupported_attributes: attributes}),
     do: AttributeGroup.to_map(attributes)

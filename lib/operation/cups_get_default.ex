@@ -4,7 +4,7 @@ defmodule Hippy.Operation.CupsGetDefault do
 
   It is sent to the server rather than a printer, e.g. `CupsGetDefault.new("ipp://localhost:631/")`.
   Use `Hippy.Response.printer/1` on the response. When no default is set, CUPS returns
-  `:client_error_not_found`.
+  an error with status `:client_error_not_found`.
 
   Takes `:requested_attributes` (defaults to `["all"]`), `:charset`, `:language` and
   `:operation_attributes`, as for other operations.

@@ -44,6 +44,32 @@ config :hippy, enums: %{
 }
 ```
 
+### Errors
+
+An IPP error (a client-error or server-error status) is returned as `{:error, %Hippy.Error{}}`, with the status, the server's status message and the whole response:
+
+```elixir
+{:error, %Hippy.Error{status: :client_error_document_format_not_supported} = error} =
+  Hippy.Operation.PrintJob.new(printer_uri, doc, document_format: "application/x-nope")
+  |> Hippy.send_operation()
+
+Hippy.Response.unsupported(error.response)
+%{"document-format" => "application/x-nope"}
+```
+
+HTTP errors are `{:error, {:http_error, status, body}}`.
+
+**`{:ok, response}` doesn't mean every setting was applied.** A printer can accept a job but ignore or change attributes it doesn't support, for example printing one-sided when asked for `two-sided-long-edge`. It then returns `:successful_ok_ignored_or_substituted_attributes`, which is still `{:ok, response}`, and lists the attributes in the response's unsupported group. When the settings matter, check it:
+
+```elixir
+{:ok, res} = Hippy.send_operation(op)
+
+case Hippy.Response.unsupported(res) do
+  empty when map_size(empty) == 0 -> :printed_as_asked
+  ignored -> {:printed_without, ignored}   # e.g. %{"sides" => "two-sided-long-edge"}
+end
+```
+
 ## Authentication, TLS and timeouts
 
 ### Authentication
@@ -180,17 +206,17 @@ Hippy.Operation.PrintJob.new(printer_uri, doc,
 
 ### Send any operation
 
-`Hippy.request/4` sends any IPP or CUPS operation by name (see `Hippy.IPP.Operation`), with attributes as a map. A job URI is sent as the job the operation is about, and CUPS's server-wide operations go to the server:
+`Hippy.send_operation/4` sends any IPP or CUPS operation by name (see `Hippy.IPP.Operation`), with attributes as a map. A job URI is sent as the job the operation is about, and CUPS's server-wide operations go to the server:
 
 ```elixir
-Hippy.request(printer_uri, :validate_job, %{"document-format" => "application/pdf", "copies" => 2})
+Hippy.send_operation(printer_uri, :validate_job, %{"document-format" => "application/pdf", "copies" => 2})
 
-Hippy.request("ipp://localhost:631/jobs/47", :hold_job, %{}, req_options: [auth: {:basic, "user:pass"}])
+Hippy.send_operation("ipp://localhost:631/jobs/47", :hold_job, %{}, req_options: [auth: {:basic, "user:pass"}])
 
-Hippy.request("ipp://localhost:631/", :cups_get_printers, %{"limit" => 10})
+Hippy.send_operation("ipp://localhost:631/", :cups_get_printers, %{"limit" => 10})
 
 # Administration is sent to /admin/, about a printer.
-Hippy.request("ipps://localhost:631/printers/front_desk", :cups_add_modify_printer,
+Hippy.send_operation("ipps://localhost:631/printers/front_desk", :cups_add_modify_printer,
   %{
     "printer-uri" => "ipp://localhost/printers/front_desk",
     "device-uri" => {:uri, "socket://10.0.0.5"},
