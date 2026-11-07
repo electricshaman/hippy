@@ -1,5 +1,7 @@
 # Changelog
 
+## Unreleased
+
 ## 0.6.0 (2026-11-07)
 
 Hippy now knows the IANA IPP registry: attributes can be given as plain names and values, any
