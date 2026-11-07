@@ -16,6 +16,11 @@ defmodule Hippy.Operation.CreatePrinterSubscriptions do
   CUPS does. With CUPS's default policy, only the subscription's owner can collect its
   notifications, so create it authenticated (see "Authentication" in the README).
 
+  Notifications only cover what the printer chooses to report. CUPS doesn't tell a printer
+  subscription about jobs being held, released or canceled, and a printer event can carry
+  `printer-state-reasons` from before the change. To follow everything, use
+  `Hippy.stream_events/2`, which reads the current state instead.
+
   ## Options
 
     * `:events` - the events to be notified about, such as `"job-completed"` or

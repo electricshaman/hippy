@@ -482,9 +482,30 @@ printer
 
 `HoldJob` keeps a job in the queue until `ReleaseJob`, and `PausePrinter` stops a printer until `ResumePrinter`. `CreateJob` and `SendDocument` build one job from several documents. CUPS only lets a job's owner hold, release or add documents to it, and administrators pause printers (see [Authentication](#authentication)).
 
+### Watch a printer
+
+`Hippy.stream_events/2` is a stream of a printer's events: its current state first, then each change to the printer and its jobs. It works the same with any printer, so the code using it doesn't need to know what's on the other end. Run it in its own process and send the events wherever they're needed, such as a LiveView:
+
+```elixir
+parent = self()
+
+Task.start_link(fn ->
+  printer
+  |> Hippy.stream_events(interval: 2_000)
+  |> Enum.each(&send(parent, {:printer_event, &1}))
+end)
+
+# Then, as things happen:
+{:printer_event, %{"notify-subscribed-event" => "printer-state-changed", "printer-state" => :idle, ...}}
+{:printer_event, %{"notify-subscribed-event" => "job-state-changed", "notify-job-id" => 47, "job-state" => :processing, ...}}
+{:printer_event, %{"notify-subscribed-event" => "printer-state-changed", "printer-state" => :stopped, "printer-state-reasons" => ["media-empty-error"], ...}}
+```
+
+It checks the printer every `interval`. A job that starts and finishes between two checks is still reported, with its final state. If the printer can't be reached, it retries a few times and then raises, so run it under a supervisor.
+
 ### Get notified about events
 
-Printers that support subscriptions (CUPS does; many home printers don't) collect events for you, such as jobs completing or the printer stopping. Subscribe, then fetch new events whenever you like. Each has a sequence number, so nothing is missed between fetches:
+Printers that support subscriptions (CUPS does; many home printers don't) collect events for you, such as jobs completing or the printer stopping. Subscribe, then fetch new events whenever you like:
 
 ```elixir
 alias Hippy.Operation.{CreatePrinterSubscriptions, GetNotifications}
@@ -510,6 +531,8 @@ Hippy.Message.events(res)
 ```
 
 Next time, ask for `sequence_numbers: 3`. A printer supports subscriptions if its `operations-supported` includes `:create_printer_subscription`. CUPS only lets the subscription's owner fetch its events, so send both requests authenticated.
+
+Events only cover what the printer chooses to report. CUPS doesn't tell a printer subscription about jobs being held, released or canceled, and a printer event can carry `printer-state-reasons` from before the change. To follow everything that happens, use `Hippy.stream_events/2`.
 
 ### List the printers on a CUPS server
 
