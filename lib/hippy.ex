@@ -92,6 +92,10 @@ defmodule Hippy do
       `req_options: [auth: {:basic, "user:pass"}]`.
     * `:endpoint` - the URL to send the request to, instead of the one derived from
       `printer_uri`.
+    * `:version` - the IPP version to send, as `{major, minor}`. Defaults to
+      `config :hippy, version: ...`, or `{1, 1}`. A printer that doesn't support it answers
+      with `:server_error_version_not_supported`. Some older servers only accept `{1, 0}`, and
+      some operations need `{2, 0}` or later.
   """
   defdelegate send_operation(op, opts \\ []), to: Hippy.Server
 
@@ -128,7 +132,7 @@ defmodule Hippy do
     * `:operation_attributes`, `:job_attributes` and `:groups` - attributes given explicitly as
       `{syntax, name, value}`, as for operations (see `Hippy.Message.build_request/4`).
     * `:charset` and `:language` - default to `"utf-8"` and `"en"`.
-    * `:timeout`, `:req_options` and `:endpoint`, as for `send_operation/2`.
+    * `:timeout`, `:req_options`, `:endpoint` and `:version`, as for `send_operation/2`.
 
   Returns the same results as `send_operation/2`, or `{:error, {:unknown_operation, name}}` for
   an operation name Hippy doesn't know (in which case nothing is sent).
@@ -140,7 +144,9 @@ defmodule Hippy do
   endpoint URL, and decodes the response.
 
   A `request_id` is assigned if the message doesn't have one. Takes the same `:timeout` and
-  `:req_options` options as `send_operation/2`, and returns the same results.
+  `:req_options` options as `send_operation/2`, and returns the same results. The message is sent
+  with its own `version`, unless the `:version` option is given; `config :hippy, version: ...`
+  doesn't apply.
   """
   defdelegate send_message(message, endpoint, opts \\ []), to: Hippy.Server
 
@@ -205,7 +211,7 @@ defmodule Hippy do
       list jobs.
     * `:interval` - how often to check, in milliseconds. Defaults to `2_000`.
     * `:retries` - how many failed checks in a row to retry. Defaults to `3`.
-    * `:timeout` and `:req_options`, as for `send_operation/2`.
+    * `:timeout`, `:req_options` and `:version`, as for `send_operation/2`.
   """
   def stream_events(printer_uri, opts \\ []), do: Hippy.EventStream.stream(printer_uri, opts)
 

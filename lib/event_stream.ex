@@ -119,7 +119,7 @@ defmodule Hippy.EventStream do
 
     %{
       uri: uri,
-      send: Keyword.take(opts, [:timeout, :req_options]),
+      send: Keyword.take(opts, [:timeout, :req_options, :version]),
       kinds: opts |> Keyword.get(:events, @kinds) |> Enum.filter(&(&1 in @kinds)),
       interval: opts[:interval],
       retries: opts[:retries],
