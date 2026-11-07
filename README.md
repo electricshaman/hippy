@@ -44,6 +44,21 @@ config :hippy, enums: %{
 }
 ```
 
+### Errors
+
+An IPP error (a client-error or server-error status) is returned as `{:error, %Hippy.Error{}}`, with the status, the server's status message and the whole response:
+
+```elixir
+{:error, %Hippy.Error{status: :client_error_document_format_not_supported} = error} =
+  Hippy.Operation.PrintJob.new(printer_uri, doc, document_format: "application/x-nope")
+  |> Hippy.send_operation()
+
+Hippy.Response.unsupported(error.response)
+%{"document-format" => "application/x-nope"}
+```
+
+Successful statuses, including `successful-ok-ignored-or-substituted-attributes` (the printer changed or ignored some attributes; see `Hippy.Response.unsupported/1`), are `{:ok, response}`. HTTP errors are `{:error, {:http_error, status, body}}`.
+
 ## Authentication, TLS and timeouts
 
 ### Authentication

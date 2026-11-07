@@ -130,8 +130,9 @@ defmodule Hippy.Integration.CupsTest do
     end
 
     test "missing queue returns not found", %{http: http} do
-      res = send!(GetPrinterAttributes.new(printer(http, "missing")))
-      assert res.status_code == :client_error_not_found
+      error = ipp_error!(GetPrinterAttributes.new(printer(http, "missing")))
+      assert error.status == :client_error_not_found
+      assert error.message =~ "does not exist"
     end
 
     test "handles concurrent requests", %{http: http} do
@@ -335,8 +336,10 @@ defmodule Hippy.Integration.CupsTest do
 
       assert res.status_code == :successful_ok
 
-      {:ok, res} = Hippy.request(uri, :validate_job, %{"document-format" => "application/x-nope"})
-      assert res.status_code == :client_error_document_format_not_supported
+      {:error, error} =
+        Hippy.request(uri, :validate_job, %{"document-format" => "application/x-nope"})
+
+      assert error.status == :client_error_document_format_not_supported
     end
 
     test "Print-Job, then job operations by job URI, as the job's owner", %{https: https} do
@@ -429,7 +432,7 @@ defmodule Hippy.Integration.CupsTest do
       {:ok, %{status_code: :successful_ok}} =
         Hippy.request(queue, :cups_delete_printer, %{"printer-uri" => printer_uri}, admin)
 
-      assert send!(GetPrinterAttributes.new(printer(ctx.http, name))).status_code ==
+      assert ipp_error!(GetPrinterAttributes.new(printer(ctx.http, name))).status ==
                :client_error_not_found
     end
   end
@@ -522,10 +525,13 @@ defmodule Hippy.Integration.CupsTest do
     end
 
     test "unsupported document format is reported", %{http: http} do
-      res =
-        send!(PrintJob.new(printer(http, "raw"), pdf(), document_format: "application/x-nope"))
+      error =
+        ipp_error!(
+          PrintJob.new(printer(http, "raw"), pdf(), document_format: "application/x-nope")
+        )
 
-      assert res.status_code == :client_error_document_format_not_supported
+      assert error.status == :client_error_document_format_not_supported
+      res = error.response
 
       assert Response.unsupported(res) == %{"document-format" => "application/x-nope"}
     end
@@ -565,8 +571,8 @@ defmodule Hippy.Integration.CupsTest do
     end
 
     test "queue rejecting jobs returns not accepting jobs", %{http: http} do
-      res = send!(PrintJob.new(printer(http, "rejecting"), pdf()))
-      assert res.status_code == :server_error_not_accepting_jobs
+      error = ipp_error!(PrintJob.new(printer(http, "rejecting"), pdf()))
+      assert error.status == :server_error_not_accepting_jobs
     end
   end
 
@@ -582,8 +588,8 @@ defmodule Hippy.Integration.CupsTest do
     end
 
     test "missing job returns not found", %{http: http} do
-      res = send!(GetJobAttributes.new(printer(http, "raw"), 99_999))
-      assert res.status_code == :client_error_not_found
+      error = ipp_error!(GetJobAttributes.new(printer(http, "raw"), 99_999))
+      assert error.status == :client_error_not_found
     end
   end
 
@@ -614,7 +620,7 @@ defmodule Hippy.Integration.CupsTest do
 
       assert send!(CancelJob.new(uri, id), @user).status_code == :successful_ok
       assert job_attributes!(uri, id, @user)["job-state"] == :canceled
-      assert send!(CancelJob.new(uri, id), @user).status_code == :client_error_not_possible
+      assert ipp_error!(CancelJob.new(uri, id), @user).status == :client_error_not_possible
     end
   end
 
@@ -743,6 +749,11 @@ defmodule Hippy.Integration.CupsTest do
   defp send!(op, opts \\ []) do
     {:ok, %Hippy.Response{} = res} = Hippy.send_operation(op, opts)
     res
+  end
+
+  defp ipp_error!(op, opts \\ []) do
+    {:error, %Hippy.Error{} = error} = Hippy.send_operation(op, opts)
+    error
   end
 
   defp print!(op, opts \\ []) do

@@ -4,6 +4,11 @@ defmodule Hippy.Server do
   @doc """
   Sends an operation to a printer and decodes the response.
 
+  Returns `{:ok, %Hippy.Response{}}`, or `{:error, %Hippy.Error{}}` when the printer returns an
+  IPP error (a client-error or server-error status, such as `:client_error_not_found`). The
+  error keeps the whole response. HTTP errors are `{:error, {:http_error, status, body}}`, and
+  transport errors are Req's exceptions (e.g. `{:error, %Req.TransportError{}}`).
+
   The request is sent to the operation's `printer_uri`, or `server_uri` for operations addressed
   to the server such as `Hippy.Operation.CupsGetPrinters` (`ipp` and `ipps` are sent over `http`
   and `https`).
@@ -107,7 +112,9 @@ defmodule Hippy.Server do
 
     case post(endpoint, Hippy.Encoder.encode(req), Keyword.get(opts, :req_options, [])) do
       {:ok, %Req.Response{status: 200, body: body}} ->
-        {:ok, Hippy.Decoder.decode(body, Keyword.take(opts, [:raw]))}
+        body
+        |> Hippy.Decoder.decode(Keyword.take(opts, [:raw]))
+        |> Hippy.Error.from_response()
 
       {:ok, %Req.Response{status: status, body: body}} ->
         {:error, {:http_error, status, body}}
