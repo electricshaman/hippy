@@ -2,8 +2,9 @@ defmodule Hippy.EventStream do
   @moduledoc false
 
   # The stream behind Hippy.stream_events/2. Every interval it reads the printer's state and its
-  # active jobs, and reports what changed. It also lists completed jobs, so a job that started and
-  # finished between two checks is still reported, with its final state.
+  # active jobs, and reports what changed. It also lists jobs completed since the newest it has
+  # seen, so a job that started and finished between two checks is still reported, with its final
+  # state.
   #
   # It doesn't use IPP notifications: with CUPS, a printer subscription isn't told about jobs
   # being held, released or canceled, and its printer events can carry state-reasons from before
@@ -17,6 +18,7 @@ defmodule Hippy.EventStream do
   @job_keys ["job-state", "job-state-reasons", "job-name"]
   @finished [:completed, :canceled, :aborted]
   @remember_finished 500
+  @completed_page 50
 
   @defaults [interval: 2_000, retries: 3]
 
@@ -72,6 +74,25 @@ defmodule Hippy.EventStream do
     Enum.filter(completed_jobs, &(&1["job-id"] > newest_id))
   end
 
+  # Whether a page of completed jobs, asked for with first-job-id and limit, holds every job newer
+  # than `newest_id`. Printers order completed jobs differently (CUPS oldest first, others newest
+  # first), and may ignore first-job-id:
+  #
+  #   * a page smaller than the limit has everything;
+  #   * newest first, it has every new job once it reaches one that isn't new;
+  #   * oldest first, it has them if the printer honoured first-job-id (no old jobs in it). If not,
+  #     the new jobs are past the limit.
+  @doc false
+  def complete_page?(jobs, newest_id, limit \\ @completed_page) do
+    ids = Enum.map(jobs, & &1["job-id"])
+
+    cond do
+      length(ids) < limit -> true
+      ids == Enum.sort(ids, :desc) -> Enum.any?(ids, &(&1 <= newest_id))
+      true -> Enum.all?(ids, &(&1 > newest_id))
+    end
+  end
+
   defp key(%{"notify-subscribed-event" => "printer-state-changed"}), do: :printer
   defp key(%{"notify-job-id" => id}), do: {:job, id}
 
@@ -109,9 +130,9 @@ defmodule Hippy.EventStream do
   end
 
   # First, the current state: the printer, and each active job. Jobs already completed before the
-  # stream started aren't reported.
+  # stream started aren't reported, but are all listed once, to know the newest.
   defp next(%{newest_job_id: nil} = state) do
-    case check(state) do
+    case check(state, &jobs(&1, :completed)) do
       {:ok, events, completed} ->
         report(events, %{state | newest_job_id: newest_id(events, completed, 0)})
 
@@ -123,7 +144,7 @@ defmodule Hippy.EventStream do
   defp next(state) do
     Process.sleep(state.interval)
 
-    case check(state) do
+    case check(state, &new_completed/1) do
       {:ok, events, completed} ->
         fast = completed |> new_finished(state.newest_job_id) |> Enum.map(&job_event/1)
         state = %{state | newest_job_id: newest_id(events, completed, state.newest_job_id)}
@@ -135,12 +156,12 @@ defmodule Hippy.EventStream do
   end
 
   # The printer's state, its active jobs, the final state of jobs that stopped being active, and
-  # the completed jobs.
-  defp check(state) do
+  # completed jobs.
+  defp check(state, completed_jobs) do
     with {:ok, printer} <- printer_state(state),
          {:ok, active} <- jobs(state, :not_completed),
          {:ok, finished} <- finished_jobs(state, Enum.map(active, & &1["job-id"])),
-         {:ok, completed} <- jobs(state, :completed) do
+         {:ok, completed} <- completed_jobs.(state) do
       {:ok, [printer_event(printer) | Enum.map(active ++ finished, &job_event/1)], completed}
     end
   end
@@ -170,11 +191,25 @@ defmodule Hippy.EventStream do
     end
   end
 
-  defp jobs(state, which) do
+  # Only the jobs completed since the newest seen, a page at a time, unless the printer's answer
+  # shows it needs the whole list (see complete_page?/3).
+  defp new_completed(state) do
+    page = %{"first-job-id" => {:integer, state.newest_job_id + 1}, "limit" => @completed_page}
+
+    with {:ok, jobs} <- jobs(state, :completed, page) do
+      if complete_page?(jobs, state.newest_job_id), do: {:ok, jobs}, else: jobs(state, :completed)
+    end
+  end
+
+  defp jobs(state, which, attributes \\ %{}) do
     if "job-state-changed" in state.kinds do
       with {:ok, res} <-
              state.uri
-             |> GetJobs.new(which_jobs: which, requested_attributes: ["job-id" | @job_keys])
+             |> GetJobs.new(
+               which_jobs: which,
+               requested_attributes: ["job-id" | @job_keys],
+               attributes: attributes
+             )
              |> Hippy.send_operation(state.send) do
         {:ok, Message.jobs(res)}
       end

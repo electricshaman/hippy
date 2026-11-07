@@ -76,4 +76,25 @@ defmodule Hippy.EventStreamTest do
     completed = [%{"job-id" => 3}, %{"job-id" => 8}, %{"job-id" => 9}]
     assert EventStream.new_finished(completed, 8) == [%{"job-id" => 9}]
   end
+
+  describe "a page of completed jobs" do
+    defp page(ids), do: Enum.map(ids, &%{"job-id" => &1})
+
+    test "smaller than the limit has every new job" do
+      assert EventStream.complete_page?(page([4, 5]), 3, 3)
+      assert EventStream.complete_page?(page([]), 3, 3)
+    end
+
+    test "newest first, it's complete once it reaches an old job" do
+      assert EventStream.complete_page?(page([9, 8, 7]), 7, 3)
+      refute EventStream.complete_page?(page([9, 8, 7]), 3, 3)
+    end
+
+    test "oldest first, it's complete if the printer honoured first-job-id" do
+      # CUPS: only jobs after the newest seen, and the rest come next time.
+      assert EventStream.complete_page?(page([4, 5, 6]), 3, 3)
+      # A printer that ignored it, listing its oldest jobs: the new ones are past the limit.
+      refute EventStream.complete_page?(page([1, 2, 3]), 5, 3)
+    end
+  end
 end
