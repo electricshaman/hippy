@@ -1127,12 +1127,12 @@ defmodule Hippy.Integration.CupsTest do
 
           assert uri
                  |> GetPrinterAttributes.new()
-                 |> send!(version: {major, minor})
+                 |> send!(ipp_version: {major, minor})
                  |> Message.status() == :successful_ok,
                  "#{uri} #{version}"
         end
 
-        assert ipp_error!(GetPrinterAttributes.new(uri), version: {9, 9}).status ==
+        assert ipp_error!(GetPrinterAttributes.new(uri), ipp_version: {9, 9}).status ==
                  :server_error_version_not_supported
       end
     end

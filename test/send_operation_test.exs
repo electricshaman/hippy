@@ -187,7 +187,7 @@ defmodule Hippy.SendOperationTest do
 
   describe "IPP version" do
     setup do
-      on_exit(fn -> Application.delete_env(:hippy, :version) end)
+      on_exit(fn -> Application.delete_env(:hippy, :ipp_version) end)
     end
 
     defp sent_version, do: elem(sent(), 1).version
@@ -198,25 +198,28 @@ defmodule Hippy.SendOperationTest do
       {:ok, _} = Hippy.send_operation(op)
       assert sent_version() == {1, 1}
 
-      {:ok, _} = Hippy.send_operation(op, version: {2, 0})
+      {:ok, _} = Hippy.send_operation(op, ipp_version: {2, 0})
       assert sent_version() == {2, 0}
 
-      {:ok, _} = Hippy.send_operation(@printer, :get_printer_attributes, %{}, version: {1, 0})
+      {:ok, _} = Hippy.send_operation(@printer, :get_printer_attributes, %{}, ipp_version: {1, 0})
       assert sent_version() == {1, 0}
 
       message = Hippy.Operation.build_request(op)
-      {:ok, _} = Hippy.send_message(message, "http://localhost:631/printers/p", version: {2, 2})
+
+      {:ok, _} =
+        Hippy.send_message(message, "http://localhost:631/printers/p", ipp_version: {2, 2})
+
       assert sent_version() == {2, 2}
     end
 
     test "config sets the default for operations, but not for messages built by hand" do
-      Application.put_env(:hippy, :version, {1, 0})
+      Application.put_env(:hippy, :ipp_version, {1, 0})
       op = Hippy.Operation.GetPrinterAttributes.new(@printer)
 
       {:ok, _} = Hippy.send_operation(op)
       assert sent_version() == {1, 0}
 
-      {:ok, _} = Hippy.send_operation(op, version: {2, 0})
+      {:ok, _} = Hippy.send_operation(op, ipp_version: {2, 0})
       assert sent_version() == {2, 0}
 
       message = %{Hippy.Operation.build_request(op) | version: {2, 0}}
@@ -229,7 +232,7 @@ defmodule Hippy.SendOperationTest do
 
       for version <- ["2.0", {2}, {256, 0}, {1, -1}] do
         assert_raise ArgumentError, ~r/IPP version must be/, fn ->
-          Hippy.send_operation(op, version: version)
+          Hippy.send_operation(op, ipp_version: version)
         end
       end
 

@@ -646,14 +646,14 @@ Hippy.send_operation(op, req_options: [auth: {:basic, "user:pass"}])
 
 ### IPP version
 
-Requests are sent as IPP 1.1 unless you say otherwise. Some older servers only accept 1.0, and some operations need 2.0 or later. A printer lists the versions it accepts in `ipp-versions-supported`. Set the version for one request, or for every request:
+Requests are sent as IPP 1.1 unless you say otherwise. Some older servers only accept 1.0, and some operations need 2.0 or later. A printer lists the versions it accepts in `ipp-versions-supported`. Set a default in config, and override it for any request, for example one to a different server:
 
 ```elixir
-Hippy.send_operation(op, version: {2, 0})
+config :hippy, ipp_version: {1, 0}
 ```
 
 ```elixir
-config :hippy, version: {1, 0}
+Hippy.send_operation(op, ipp_version: {2, 0})
 ```
 
 ### Authentication

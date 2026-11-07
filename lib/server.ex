@@ -133,7 +133,7 @@ defmodule Hippy.Server do
     message = %{
       message
       | request_id: message.request_id || System.unique_integer([:positive, :monotonic]),
-        version: opts |> Keyword.get(:version, message.version) |> validate_version!()
+        version: opts |> Keyword.get(:ipp_version, message.version) |> validate_version!()
     }
 
     case post(endpoint, Hippy.Encoder.encode(message), opts) do
@@ -207,10 +207,12 @@ defmodule Hippy.Server do
     |> Req.post(url: url)
   end
 
-  # The IPP version for an operation: the :version option, then config, then 1.1.
+  # The IPP version for an operation: the :ipp_version option, then config, then 1.1.
   defp put_version(message, opts) do
     version =
-      Keyword.get_lazy(opts, :version, fn -> Application.get_env(:hippy, :version, {1, 1}) end)
+      Keyword.get_lazy(opts, :ipp_version, fn ->
+        Application.get_env(:hippy, :ipp_version, {1, 1})
+      end)
 
     %{message | version: validate_version!(version)}
   end
