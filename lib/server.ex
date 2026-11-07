@@ -90,7 +90,15 @@ defmodule Hippy.Server do
     end
   end
 
+  # IANA's current names for operations Hippy knows by their earlier, singular names.
+  @operation_aliases %{
+    create_printer_subscriptions: :create_printer_subscription,
+    create_job_subscriptions: :create_job_subscription
+  }
+
   defp operation_id(name) when is_atom(name) do
+    name = Map.get(@operation_aliases, name, name)
+
     case Hippy.IPP.Operation.encode(name) do
       {:ok, id} -> {:ok, id, name}
       {:error, _} -> {:error, {:unknown_operation, name}}

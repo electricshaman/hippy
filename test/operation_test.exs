@@ -5,17 +5,22 @@ defmodule Hippy.OperationTest do
 
   alias Hippy.Operation.{
     CancelJob,
+    CancelSubscription,
     CreateJob,
+    CreateJobSubscriptions,
+    CreatePrinterSubscriptions,
     CupsGetClasses,
     CupsGetDefault,
     CupsGetPrinters,
     GetJobAttributes,
     GetJobs,
+    GetNotifications,
     GetPrinterAttributes,
     HoldJob,
     PausePrinter,
     PrintJob,
     ReleaseJob,
+    RenewSubscription,
     ResumePrinter,
     SendDocument,
     ValidateJob
@@ -202,7 +207,12 @@ defmodule Hippy.OperationTest do
           HoldJob.new(@uri, 1, operation_attributes: [extra]),
           ReleaseJob.new(@uri, 1, operation_attributes: [extra]),
           PausePrinter.new(@uri, operation_attributes: [extra]),
-          ResumePrinter.new(@uri, operation_attributes: [extra])
+          ResumePrinter.new(@uri, operation_attributes: [extra]),
+          CreatePrinterSubscriptions.new(@uri, operation_attributes: [extra]),
+          CreateJobSubscriptions.new(@uri, 1, operation_attributes: [extra]),
+          GetNotifications.new(@uri, 1, operation_attributes: [extra]),
+          RenewSubscription.new(@uri, 1, operation_attributes: [extra]),
+          CancelSubscription.new(@uri, 1, operation_attributes: [extra])
         ] do
       assert op |> Operation.build_request() |> group(:operation) |> List.last() ==
                {"requesting-user-name", [name_without_language: "hippy"]}
@@ -281,6 +291,123 @@ defmodule Hippy.OperationTest do
         assert names(group(message, :operation)) |> List.last() == "printer-uri"
         assert Enum.map(message.groups, &elem(&1, 0)) == [:operation]
       end
+    end
+  end
+
+  describe "subscriptions" do
+    test "Create-Printer-Subscriptions sends one subscription group" do
+      message = @uri |> CreatePrinterSubscriptions.new() |> Operation.build_request()
+
+      assert message.code == 0x0016
+
+      assert group(message, :subscription) == [
+               {"notify-pull-method", [keyword: "ippget"]},
+               {"notify-events", [keyword: "job-state-changed", keyword: "printer-state-changed"]}
+             ]
+
+      message =
+        @uri
+        |> CreatePrinterSubscriptions.new(
+          events: ["job-completed"],
+          lease_duration: 600,
+          user_data: "station-3",
+          attributes: %{"notify-time-interval" => 5}
+        )
+        |> Operation.build_request()
+
+      assert group(message, :subscription) == [
+               {"notify-pull-method", [keyword: "ippget"]},
+               {"notify-events", [keyword: "job-completed"]},
+               {"notify-lease-duration", [integer: 600]},
+               {"notify-user-data", [octet_string: "station-3"]},
+               {"notify-time-interval", [integer: 5]}
+             ]
+    end
+
+    test "Create-Job-Subscriptions names the job in the subscription" do
+      message = @uri |> CreateJobSubscriptions.new(9) |> Operation.build_request()
+
+      assert message.code == 0x0017
+
+      assert group(message, :subscription) == [
+               {"notify-job-id", [integer: 9]},
+               {"notify-pull-method", [keyword: "ippget"]},
+               {"notify-events", [keyword: "job-state-changed"]}
+             ]
+    end
+
+    test "Get-Notifications sends ids, and sequence numbers and wait when given" do
+      message = @uri |> GetNotifications.new(4) |> Operation.build_request()
+
+      assert message.code == 0x001C
+
+      assert group(message, :operation) |> Enum.drop(3) == [
+               {"notify-subscription-ids", [integer: 4]}
+             ]
+
+      message =
+        @uri
+        |> GetNotifications.new([4, 5], sequence_numbers: [10, 1], wait: true)
+        |> Operation.build_request()
+
+      assert group(message, :operation) |> Enum.drop(3) == [
+               {"notify-subscription-ids", [integer: 4, integer: 5]},
+               {"notify-sequence-numbers", [integer: 10, integer: 1]},
+               {"notify-wait", [boolean: 1]}
+             ]
+    end
+
+    test "Renew-Subscription and Cancel-Subscription name the subscription" do
+      message = @uri |> RenewSubscription.new(4, lease_duration: 60) |> Operation.build_request()
+
+      assert message.code == 0x001A
+
+      assert group(message, :operation) |> Enum.drop(3) == [
+               {"notify-subscription-id", [integer: 4]},
+               {"notify-lease-duration", [integer: 60]}
+             ]
+
+      message = @uri |> CancelSubscription.new(4) |> Operation.build_request()
+      assert message.code == 0x001B
+      assert group(message, :operation) |> List.last() == {"notify-subscription-id", [integer: 4]}
+    end
+
+    test "subscriptions and events are read as maps" do
+      message = %Message{
+        code: 0,
+        request_id: 1,
+        groups: [
+          {:operation, [{"notify-get-interval", [integer: 60]}]},
+          {:subscription, [{"notify-subscription-id", [integer: 4]}]},
+          {:event_notification,
+           [
+             {"notify-sequence-number", [integer: 1]},
+             {"notify-subscribed-event", [keyword: "job-completed"]},
+             {"job-state", [enum: 9]}
+           ]},
+          {:event_notification,
+           [
+             {"notify-sequence-number", [integer: 2]},
+             {"notify-subscribed-event", [keyword: "printer-state-changed"]},
+             {"printer-state", [enum: 5]}
+           ]}
+        ]
+      }
+
+      assert Message.subscriptions(message) == [%{"notify-subscription-id" => 4}]
+
+      assert Message.events(message) == [
+               %{
+                 "notify-sequence-number" => 1,
+                 "notify-subscribed-event" => "job-completed",
+                 "job-state" => :completed
+               },
+               %{
+                 "notify-sequence-number" => 2,
+                 "notify-subscribed-event" => "printer-state-changed",
+                 "printer-state" => :stopped
+               }
+             ]
     end
   end
 end
