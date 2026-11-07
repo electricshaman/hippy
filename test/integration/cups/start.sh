@@ -5,6 +5,14 @@ set -e
 mkdir -p /spool
 touch /spool/filtered.ps && chmod 666 /spool/filtered.ps
 
+# ippeveprinter, an emulated driverless (IPP Everywhere) printer for the README's home-printer
+# examples. It needs DNS-SD, so start D-Bus and Avahi first.
+mkdir -p /run/dbus /spool/home
+dbus-daemon --system
+avahi-daemon --no-chroot -D
+ippeveprinter -p 8631 -k -d /spool/home -M Hippy -m "Home Printer" \
+  -f application/pdf,image/jpeg "Home Printer" >/dev/null 2>&1 &
+
 cupsd -f &
 until lpstat -r >/dev/null 2>&1; do sleep 0.2; done
 # lpstat can report the scheduler as running slightly before lpadmin is accepted.
@@ -26,6 +34,10 @@ done
 # A class containing two of the queues, and a default destination.
 lpadmin -p raw -c raw_class && lpadmin -p filtered -c raw_class && cupsenable raw_class && cupsaccept raw_class
 lpadmin -d raw
+
+until ipptool -q ipp://localhost:8631/ipp/print get-printer-attributes.test 2>/dev/null; do
+  sleep 0.2
+done
 
 echo READY
 wait
