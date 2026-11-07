@@ -1,7 +1,5 @@
 defmodule Hippy.Decoder do
-  @moduledoc """
-  Decodes IPP messages. See `Hippy.Message.decode/1`.
-  """
+  @moduledoc false
 
   @doc "Decodes an IPP message from its binary form. Same as `Hippy.Message.decode/1`."
   def decode(bin), do: Hippy.Message.decode(bin)

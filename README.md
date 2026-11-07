@@ -87,14 +87,14 @@ end)
 
 ### Send each job to the least busy printer
 
-Add a `print/2` to `MyApp.Fleet` that picks the ready printer with the shortest queue (`Hippy.Printer.ready?/1` checks it's accepting jobs and has no errors such as a paper jam), and moves on to the next one if that printer refuses the job. `Hippy.safe_to_resend?/1` decides that for any error, including HTTP problems: it doesn't move on after a timeout, because the printer may have accepted the job anyway, and trying another would print it twice.
+Add a `print/2` to `MyApp.Fleet` that picks the ready printer with the shortest queue (`Hippy.printer_ready?/1` checks it's accepting jobs and has no errors such as a paper jam), and moves on to the next one if that printer refuses the job. `Hippy.safe_to_resend?/1` decides that for any error, including HTTP problems: it doesn't move on after a timeout, because the printer may have accepted the job anyway, and trying another would print it twice.
 
 ```elixir
   def print(printer_uris, document) do
     printer_uris
     |> status()
     |> Enum.flat_map(fn
-      {uri, {:ok, printer}} -> if Hippy.Printer.ready?(printer), do: [{uri, printer}], else: []
+      {uri, {:ok, printer}} -> if Hippy.printer_ready?(printer), do: [{uri, printer}], else: []
       {_uri, {:error, _}} -> []
     end)
     |> Enum.sort_by(fn {_uri, printer} -> printer["queued-job-count"] end)
@@ -313,9 +313,9 @@ Hippy.Operation.PrintJob.new(printer_uri, doc,
 |> Hippy.send_operation()
 ```
 
-Maps are collections and lists are sets. For attributes that can be a keyword or a name (such as `media`), a value spelt like a keyword is sent as one, and anything else as a name. `{syntax, value}` gives the syntax explicitly, and is needed for attributes the registry doesn't know, which go in the operation's main group (job attributes for Print-Job). See `Hippy.AttributeInference`.
+Maps are collections and lists are sets. For attributes that can be a keyword or a name (such as `media`), a value spelt like a keyword is sent as one, and anything else as a name. `{syntax, value}` gives the syntax explicitly, and is needed for attributes the registry doesn't know, which go in the operation's main group (job attributes for Print-Job). See "Attributes as maps" in the `Hippy` docs.
 
-To control the syntax and group yourself, every operation also accepts `operation_attributes:`, and Print-Job `job_attributes:`, as `{syntax, name, value}` tuples. Other attribute groups go in `groups:`, as `{tag, tuples}`. These replace an attribute of the same name from `attributes:` or Hippy's defaults. See `Hippy.Encoder.encode/1` for the supported syntaxes.
+To control the syntax and group yourself, every operation also accepts `operation_attributes:`, and Print-Job `job_attributes:`, as `{syntax, name, value}` tuples. Other attribute groups go in `groups:`, as `{tag, tuples}`. These replace an attribute of the same name from `attributes:` or Hippy's defaults. See `Hippy.Message.encode/1` for the supported syntaxes.
 
 ```elixir
 Hippy.Operation.PrintJob.new(printer_uri, doc,

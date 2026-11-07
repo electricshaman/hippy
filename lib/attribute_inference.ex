@@ -1,46 +1,5 @@
 defmodule Hippy.AttributeInference do
-  @moduledoc """
-  Works out each attribute's syntax and group from the IANA registry (`Hippy.IPP.Attributes`),
-  so attributes can be given as plain names and values:
-
-      PrintJob.new(uri, doc,
-        attributes: %{
-          "copies" => 2,
-          "sides" => "two-sided-long-edge",
-          "orientation-requested" => :landscape,
-          "media-col" => %{"media-size" => %{"x-dimension" => 21000, "y-dimension" => 29700}}
-        }
-      )
-
-  ## Syntax
-
-  The syntax comes from the attribute's registered types and the value:
-
-    * Integers, booleans, `DateTime`, `Range`, `URI` and `Hippy.PrintResolution` values map to
-      the matching type. For an enum attribute, an integer or an atom such as `:landscape` (see
-      `Hippy.IPP.Enum`).
-    * Strings: for attributes that can be a keyword or a name (such as `media`), a string spelt
-      like a keyword (lowercase letters, digits, `-`, `_` and `.`) is sent as a keyword, and
-      anything else as a name. Otherwise the attribute's string type (`text`, `uri`,
-      `mimeMediaType`, ...) is used. `{language, text}` is text or name with a language.
-    * Maps are collections, with each member's syntax taken from its own definition.
-    * Lists are sets, and each value's syntax is worked out separately.
-    * `{syntax, value}` gives the syntax explicitly, e.g. `{:name_without_language, "plain"}`.
-
-  ## Group
-
-  Attributes go in the group their operation is mainly about (job template attributes for
-  Print-Job and Validate-Job, printer attributes for CUPS-Add-Modify-Printer and
-  Set-Printer-Attributes, subscription attributes for Create-Printer-Subscriptions, ...), if
-  they're registered there, and otherwise in the operation attributes or another group they're
-  registered in.
-
-  Attributes the registry doesn't know (vendor and CUPS attributes such as `device-uri`) need
-  their syntax, as `{syntax, value}`, and go in the operation's main group, or the operation
-  attributes for operations without one. To put one elsewhere, use an operation's
-  `operation_attributes:`, `job_attributes:` or `groups:` options. A value that doesn't fit an
-  attribute's types raises `ArgumentError`.
-  """
+  @moduledoc false
 
   alias Hippy.IPP.Attributes
 

@@ -1,9 +1,7 @@
-defmodule Hippy.PrinterTest do
+defmodule Hippy.PrinterReadyTest do
   use ExUnit.Case, async: true
 
-  doctest Hippy.Printer
-
-  alias Hippy.Printer
+  doctest Hippy, only: [printer_ready?: 1]
 
   defp printer(state, reasons, accepting \\ true) do
     %{
@@ -14,32 +12,32 @@ defmodule Hippy.PrinterTest do
   end
 
   test "ready when accepting, not stopped, and nothing stops it printing" do
-    assert Printer.ready?(printer(:idle, ["none"]))
-    assert Printer.ready?(printer(:processing, ["none"]))
-    assert Printer.ready?(printer(:idle, ["toner-low-report", "media-low-warning"]))
+    assert Hippy.printer_ready?(printer(:idle, ["none"]))
+    assert Hippy.printer_ready?(printer(:processing, ["none"]))
+    assert Hippy.printer_ready?(printer(:idle, ["toner-low-report", "media-low-warning"]))
 
     # Without a suffix, a reason is a warning unless the printer is stopped (RFC 8011).
-    assert Printer.ready?(printer(:idle, ["media-low"]))
+    assert Hippy.printer_ready?(printer(:idle, ["media-low"]))
   end
 
   test "not ready when stopped, not accepting jobs, or reporting an error" do
-    refute Printer.ready?(printer(:stopped, ["paused"]))
-    refute Printer.ready?(printer(:idle, ["none"], false))
-    refute Printer.ready?(printer(:idle, ["media-jam-error"]))
-    refute Printer.ready?(printer(:idle, ["toner-low-report", "door-open-error"]))
+    refute Hippy.printer_ready?(printer(:stopped, ["paused"]))
+    refute Hippy.printer_ready?(printer(:idle, ["none"], false))
+    refute Hippy.printer_ready?(printer(:idle, ["media-jam-error"]))
+    refute Hippy.printer_ready?(printer(:idle, ["toner-low-report", "door-open-error"]))
 
     # CUPS reports offline-report when it can't reach a printer.
-    refute Printer.ready?(printer(:idle, ["offline-report"]))
+    refute Hippy.printer_ready?(printer(:idle, ["offline-report"]))
   end
 
   test "a single reason (not a list) works too" do
-    assert Printer.ready?(printer(:idle, "none"))
-    refute Printer.ready?(printer(:idle, "media-empty-error"))
+    assert Hippy.printer_ready?(printer(:idle, "none"))
+    refute Hippy.printer_ready?(printer(:idle, "media-empty-error"))
   end
 
   test "raises when the attributes it needs weren't requested" do
     assert_raise ArgumentError, ~r/needs printer-state/, fn ->
-      Printer.ready?(%{"printer-name" => "p"})
+      Hippy.printer_ready?(%{"printer-name" => "p"})
     end
   end
 end

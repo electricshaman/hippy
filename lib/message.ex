@@ -17,7 +17,7 @@ defmodule Hippy.Message do
       }
 
     * `:code` is the operation id in a request and the status code in a response. `status/1` and
-      `operation/1` return them as atoms.
+      `operation_name/1` return them as atoms.
     * `:groups` is an ordered list of `{tag, attributes}`. A tag can repeat (one `:job` or
       `:printer` group per job or printer). Tags are `:operation`, `:job`, `:printer`,
       `:unsupported`, `:subscription`, `:event_notification`, `:resource`, `:document` and
@@ -59,7 +59,7 @@ defmodule Hippy.Message do
   }
   @tag_names Map.new(@tags, fn {name, number} -> {number, name} end)
 
-  # Group names used by Hippy before 0.7 (and by Hippy.AttributeInference), accepted in groups:.
+  # Group names used by Hippy before 0.7 (and by attribute inference), accepted in groups:.
   @old_tags %{
     operation_attributes: :operation,
     job_attributes: :job,
@@ -96,8 +96,30 @@ defmodule Hippy.Message do
   end
 
   @doc """
-  Encodes a message into its binary form, or a stream when `data` is an `Enumerable` (see
-  `Hippy.Encoder.encode/1`).
+  Encodes a message into its binary form.
+
+  A message's attributes are `{name, [{syntax, value}, ...]}`. Values can be in their wire form
+  (as `Hippy.Message.decode/1` returns them) or one of these, as can the `{syntax, name, value}`
+  tuples given to `Hippy.Message.build_request/4`:
+
+    * `:integer` and `:enum` take integers, and `:boolean` takes booleans.
+    * `:keyword`, `:uri`, `:mime_media_type`, `:text_without_language`, `:name_without_language`
+      and the other string syntaxes take binaries. `:uri` also takes a `URI`.
+    * `:text_with_language` and `:name_with_language` take `{language, text}`.
+    * `:datetime` takes a `DateTime`, `:range_of_integer` a `Range`, and `:resolution` a
+      `Hippy.PrintResolution`.
+    * Out-of-band syntaxes (`:no_value`, `:delete_attribute`, `:not_settable`, `:admin_define`,
+      `:unknown`, `:unsupported`) ignore the value, e.g. `{:delete_attribute, "job-hold-until", nil}`.
+    * `:collection` takes a map of member names to `{syntax, value}` (or `{syntax, nil, value}`).
+      A list of those encodes a multi-valued member.
+
+  A list value is encoded as a multi-valued attribute, as is `{{:set1, syntax}, name, values}`.
+  Raises `ArgumentError` for a value that can't be encoded.
+
+  The message's `data` (the document) is a binary, or an `Enumerable` of binaries such as
+  `File.stream!/2`. For a binary the whole message is returned as a binary. For an enumerable
+  it's returned as a stream (the encoded attributes, then the document's chunks as they're
+  read), so the document is never all in memory.
   """
   def encode(%__MODULE__{} = message), do: Hippy.Encoder.encode(message)
 
@@ -110,7 +132,7 @@ defmodule Hippy.Message do
   end
 
   @doc "Returns a request's operation as an atom, or the integer if Hippy doesn't know it."
-  def operation(%__MODULE__{code: code}) do
+  def operation_name(%__MODULE__{code: code}) do
     case Hippy.IPP.Operation.decode(code) do
       {:ok, operation} -> operation
       {:error, _} -> code
@@ -124,10 +146,10 @@ defmodule Hippy.Message do
   with (`attributes-charset`, `attributes-natural-language` and, for operations with a
   `printer_uri` field, `printer-uri`) from the operation's `charset`, `language` and
   `printer_uri` fields, followed by `attributes`, given as `{syntax, name, value}` tuples (see
-  `Hippy.Encoder.encode/1`).
+  `encode/1`).
 
-  The operation's `attributes` field, a map of names to values, is placed and typed by
-  `Hippy.AttributeInference`. Its `operation_attributes` and `job_attributes` fields are added
+  The operation's `attributes` field, a map of names to values, is placed and typed as described
+  in "Attributes as maps" in the `Hippy` docs. Its `operation_attributes` and `job_attributes` fields are added
   to those groups, and its `groups` field as further groups. Each attribute replaces one of the
   same name, explicit ones last, so callers can override the defaults.
 
@@ -303,7 +325,7 @@ defmodule Hippy.Message do
     attributes
     |> to_tuples()
     |> Hippy.Decoder.interpret_group()
-    |> Hippy.AttributeGroup.to_map()
+    |> Hippy.AttributeGroup.compact_group()
   end
 
   # Message attributes back to the parser's tuples: one per value, with a nil name for

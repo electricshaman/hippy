@@ -13,7 +13,7 @@ defmodule Hippy.AttributeGroupTest do
       ]
     }
 
-    assert Hippy.AttributeGroup.to_map(response.operation_attributes) == %{
+    assert Hippy.AttributeGroup.compact_group(response.operation_attributes) == %{
              "attributes-charset" => "utf-8",
              "attributes-natural-language" => "en"
            }
@@ -621,7 +621,7 @@ defmodule Hippy.AttributeGroupTest do
       version: %Hippy.IPPVersion{major: 1, minor: 1}
     }
 
-    assert Hippy.AttributeGroup.to_map(response.printer_attributes) == %{
+    assert Hippy.AttributeGroup.compact_group(response.printer_attributes) == %{
              "printer-uri-supported" => [
                %URI{
                  authority: "192.168.1.164:631",
@@ -1337,7 +1337,7 @@ defmodule Hippy.AttributeGroupTest do
       version: %Hippy.IPPVersion{major: 1, minor: 1}
     }
 
-    assert Hippy.AttributeGroup.to_map(response.job_attributes) == %{
+    assert response.job_attributes |> hd() |> Hippy.AttributeGroup.compact_group() == %{
              "number-of-documents" => 0,
              "job-media-progress" => 0,
              "job-more-info" => %URI{
@@ -1424,7 +1424,7 @@ defmodule Hippy.AttributeGroupTest do
   test "registered set attributes are always lists" do
     media = %{"media-size" => {:collection, nil, %{"x-dimension" => {:integer, nil, 21000}}}}
 
-    assert Hippy.AttributeGroup.to_map([
+    assert Hippy.AttributeGroup.compact_group([
              {:keyword, "job-state-reasons", "none"},
              {:keyword, "printer-state-reasons", ["media-low", "toner-low"]},
              {:collection, "media-col-ready", media},
@@ -1453,7 +1453,7 @@ defmodule Hippy.AttributeGroupTest do
       "punching" => punching
     }
 
-    assert Hippy.AttributeGroup.to_map([
+    assert Hippy.AttributeGroup.compact_group([
              {:collection, "finishings-col", finishings},
              {:collection, "finishings-col-ready", %{"punching" => punching}},
              {:collection, "x-vendor-col", %{"folding" => folding}}
@@ -1472,10 +1472,5 @@ defmodule Hippy.AttributeGroupTest do
              # Members of attributes the registry doesn't know are left as they are.
              "x-vendor-col" => %{"folding" => %{"folding-direction" => "inward"}}
            }
-  end
-
-  test "to_map with an out-of-range index returns an error" do
-    assert Hippy.AttributeGroup.to_map([[{:integer, "job-id", 1}]], 5) ==
-             {:error, :bad_attribute_group}
   end
 end

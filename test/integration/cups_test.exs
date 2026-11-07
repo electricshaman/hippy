@@ -186,7 +186,7 @@ defmodule Hippy.Integration.CupsTest do
       refute output =~ "/printers/raw:"
     end
 
-    test "Hippy.Printer.ready? on real printers", %{http: http} do
+    test "Hippy.printer_ready? on real printers", %{http: http} do
       ready =
         for queue <- ["raw", "held_jobs", "rejecting"], into: %{} do
           printer =
@@ -202,7 +202,7 @@ defmodule Hippy.Integration.CupsTest do
             |> send!()
             |> Message.printer()
 
-          {queue, Hippy.Printer.ready?(printer)}
+          {queue, Hippy.printer_ready?(printer)}
         end
 
       assert ready == %{"raw" => true, "held_jobs" => false, "rejecting" => false}
@@ -332,9 +332,9 @@ defmodule Hippy.Integration.CupsTest do
       admin = "#{ctx.https}/admin/"
 
       assert {:error, %Hippy.HTTPError{status: 401}} =
-               Hippy.Server.send_request(req, admin, @anonymous)
+               Hippy.send_message(req, admin, @anonymous)
 
-      assert {:ok, %Message{code: 0}} = Hippy.Server.send_request(req, admin, @admin)
+      assert {:ok, %Message{code: 0}} = Hippy.send_message(req, admin, @admin)
 
       attrs =
         printer(ctx.http, name) |> GetPrinterAttributes.new() |> send!() |> Message.printer()
@@ -366,7 +366,7 @@ defmodule Hippy.Integration.CupsTest do
       assert Enum.map(req.groups, &elem(&1, 0)) == [:operation, :printer]
 
       assert {:ok, %Message{code: 0}} =
-               Hippy.Server.send_request(req, "#{ctx.https}/admin/", @admin)
+               Hippy.send_message(req, "#{ctx.https}/admin/", @admin)
 
       attrs =
         printer(ctx.http, name) |> GetPrinterAttributes.new() |> send!() |> Message.printer()
@@ -390,7 +390,7 @@ defmodule Hippy.Integration.CupsTest do
           groups: [subscription.(["printer-state-changed"]), subscription.(["job-completed"])]
         )
 
-      {:ok, res} = Hippy.Server.send_request(req, uri)
+      {:ok, res} = Hippy.send_message(req, uri)
       assert Message.status(res) == :successful_ok
 
       ids = res |> Message.groups(:subscription) |> Enum.map(& &1["notify-subscription-id"])
@@ -404,7 +404,7 @@ defmodule Hippy.Integration.CupsTest do
           {{:set1, :keyword}, "requested-attributes", ["notify-subscription-id", "notify-events"]}
         ])
 
-      {:ok, res} = Hippy.Server.send_request(list, uri)
+      {:ok, res} = Hippy.send_message(list, uri)
 
       events =
         res
@@ -512,9 +512,11 @@ defmodule Hippy.Integration.CupsTest do
       queue = printer(ctx.https, name)
 
       printer_state = fn ->
-        Message.printer(printer(ctx.http, name) |> GetPrinterAttributes.new() |> send!())[
-          "printer-state"
-        ]
+        printer(ctx.http, name)
+        |> GetPrinterAttributes.new()
+        |> send!()
+        |> Message.printer()
+        |> Map.get("printer-state")
       end
 
       {:ok, res} =
@@ -531,10 +533,11 @@ defmodule Hippy.Integration.CupsTest do
 
       assert Message.status(res) == :successful_ok
 
-      assert Message.printer(printer(ctx.http, name) |> GetPrinterAttributes.new() |> send!())[
-               "printer-info"
-             ] ==
-               "Made by Hippy.send_operation"
+      assert printer(ctx.http, name)
+             |> GetPrinterAttributes.new()
+             |> send!()
+             |> Message.printer()
+             |> Map.get("printer-info") == "Made by Hippy.send_operation"
 
       {:ok, %Message{code: 0}} =
         Hippy.send_operation(queue, :pause_printer, %{}, @admin)
@@ -549,8 +552,8 @@ defmodule Hippy.Integration.CupsTest do
       {:ok, %Message{code: 0}} =
         Hippy.send_operation(queue, :cups_delete_printer, %{"printer-uri" => printer_uri}, admin)
 
-      assert ipp_error!(printer(ctx.http, name) |> GetPrinterAttributes.new()).status ==
-               :client_error_not_found
+      error = printer(ctx.http, name) |> GetPrinterAttributes.new() |> ipp_error!()
+      assert error.status == :client_error_not_found
     end
   end
 
@@ -997,7 +1000,7 @@ defmodule Hippy.ReadmeFleet do
     printer_uris
     |> status()
     |> Enum.flat_map(fn
-      {uri, {:ok, printer}} -> if Hippy.Printer.ready?(printer), do: [{uri, printer}], else: []
+      {uri, {:ok, printer}} -> if Hippy.printer_ready?(printer), do: [{uri, printer}], else: []
       {_uri, {:error, _}} -> []
     end)
     |> Enum.sort_by(fn {_uri, printer} -> printer["queued-job-count"] end)

@@ -54,13 +54,13 @@ defmodule Hippy.ServerTest do
     req = GetJobs.new(@endpoint) |> Hippy.Operation.build_request()
     assert req.request_id == nil
 
-    {:ok, _} = Server.send_request(req, @endpoint)
-    {:ok, _} = Server.send_request(req, @endpoint)
+    {:ok, _} = Hippy.send_message(req, @endpoint)
+    {:ok, _} = Hippy.send_message(req, @endpoint)
     assert_received {:request_id, first}
     assert_received {:request_id, second}
     assert first > 0 and second > first
 
-    {:ok, _} = Server.send_request(%{req | request_id: 1234}, @endpoint)
+    {:ok, _} = Hippy.send_message(%{req | request_id: 1234}, @endpoint)
     assert_received {:request_id, 1234}
   end
 

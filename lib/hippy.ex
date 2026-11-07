@@ -1,15 +1,96 @@
 defmodule Hippy do
   @moduledoc """
-  IPP client API.
+  An IPP client: send operations to printers and CUPS servers, and read their responses.
 
-  Functions that send a request over the network are named `send_*`. Everything else, such as
-  building operations (`Hippy.Operation.PrintJob.new/3`), encoding and decoding, and reading
-  responses (`Hippy.Message`), has no side effects.
+  Functions that send a request over the network are named `send_*`. Everything else has no side
+  effects: building operations (`Hippy.Operation.PrintJob.new/3` and the other
+  `Hippy.Operation` modules), reading responses and encoding messages (`Hippy.Message`), and the
+  helpers `printer_ready?/1` and `safe_to_resend?/1`.
+
+      {:ok, res} =
+        "ipp://localhost:631/printers/office"
+        |> Hippy.Operation.GetPrinterAttributes.new()
+        |> Hippy.send_operation()
+
+      Hippy.Message.printer(res)["printer-state"]
+      #=> :idle
+
+  ## Errors
+
+  Sending returns `{:ok, %Hippy.Message{}}`, or `{:error, error}` where `error` is an exception
+  once the request has been sent:
+
+    * `Hippy.Error` when the printer returns an IPP error (a client-error or server-error
+      status, such as `:client_error_not_found`). It keeps the whole response.
+    * `Hippy.HTTPError` when it answers with an HTTP error instead, e.g. 401 Unauthorized.
+    * Req's exceptions, such as `Req.TransportError`, when it can't be reached or times out.
+
+  So `Exception.message/1` describes any of them, and `safe_to_resend?/1` says whether the
+  request definitely wasn't accepted. Errors found before anything is sent are tuples, such as
+  `{:unknown_operation, name}`.
+
+  `{:ok, response}` can still mean the printer ignored or changed some attributes it doesn't
+  support (status `:successful_ok_ignored_or_substituted_attributes`).
+  `Hippy.Message.unsupported/1` lists them.
+
+  ## Attributes as maps
+
+  Operations' `attributes:` option, and `send_operation/4`, take attributes as a map of names to
+  plain values. Each attribute's syntax and group are worked out from the IANA registry
+  (`Hippy.IPP.Attributes`):
+
+      Hippy.Operation.PrintJob.new(uri, doc,
+        attributes: %{
+          "copies" => 2,
+          "sides" => "two-sided-long-edge",
+          "orientation-requested" => :landscape,
+          "media-col" => %{"media-size" => %{"x-dimension" => 21000, "y-dimension" => 29700}}
+        }
+      )
+
+  The syntax comes from the attribute's registered types and the value:
+
+    * Integers, booleans, `DateTime`, `Range`, `URI` and `Hippy.PrintResolution` values map to
+      the matching type. For an enum attribute, an integer or an atom such as `:landscape` (see
+      `Hippy.IPP.Enum`).
+    * Strings: for attributes that can be a keyword or a name (such as `media`), a string spelt
+      like a keyword (lowercase letters, digits, `-`, `_` and `.`) is sent as a keyword, and
+      anything else as a name. Otherwise the attribute's string type (`text`, `uri`,
+      `mimeMediaType`, ...) is used. `{language, text}` is text or name with a language.
+    * Maps are collections, with each member's syntax taken from its own definition.
+    * Lists are sets, and each value's syntax is worked out separately.
+    * `{syntax, value}` gives the syntax explicitly, e.g. `{:name_without_language, "plain"}`.
+
+  Attributes go in the group their operation is mainly about (job template attributes for
+  Print-Job and Validate-Job, printer attributes for CUPS-Add-Modify-Printer and
+  Set-Printer-Attributes, subscription attributes for Create-Printer-Subscriptions, ...), if
+  they're registered there, and otherwise in the operation attributes or another group they're
+  registered in.
+
+  Attributes the registry doesn't know (vendor and CUPS attributes such as `device-uri`) need
+  their syntax, as `{syntax, value}`, and go in the operation's main group, or the operation
+  attributes for operations without one. To put one elsewhere, use an operation's
+  `operation_attributes:`, `job_attributes:` or `groups:` options, which take
+  `{syntax, name, value}` tuples (see `Hippy.Message.encode/1` for the syntaxes). A value that
+  doesn't fit an attribute's types raises `ArgumentError`.
   """
 
   @doc """
-  Sends an operation struct (such as `Hippy.Operation.PrintJob`) to a printer. See
-  `Hippy.Server.send_operation/2` for the options.
+  Sends an operation (such as a `Hippy.Operation.PrintJob`) and decodes the response.
+
+  The request is sent to the operation's `printer_uri`, or `server_uri` for operations addressed
+  to the server such as `Hippy.Operation.CupsGetPrinters` (`ipp` and `ipps` are sent over `http`
+  and `https`). See the module docs for what it returns.
+
+  ## Options
+
+    * `:timeout` - how long to wait, in milliseconds, both to connect and for the response.
+      Req's defaults apply otherwise (15 seconds for the response).
+    * `:req_options` - options for `Req` (authentication, TLS, etc.) for this request, merged
+      over `config :hippy, req_options: [...]`. For example
+      `req_options: [auth: {:basic, "user:pass"}]`.
+    * `:endpoint` - the URL to send the request to, instead of the one derived from
+      `printer_uri`.
   """
   defdelegate send_operation(op, opts \\ []), to: Hippy.Server
 
@@ -24,7 +105,8 @@ defmodule Hippy do
       Hippy.send_operation("ipp://localhost:631/", :cups_get_printers, %{"limit" => 10})
 
   `operation` is a name from `Hippy.IPP.Operation` (e.g. `:print_job`) or an operation id.
-  Each attribute's syntax and group come from the IANA registry (see `Hippy.AttributeInference`).
+  Each attribute's syntax and group come from the IANA registry (see "Attributes as maps" in
+  the module docs).
 
   What the request is about is worked out from the URI and the operation:
 
@@ -52,6 +134,57 @@ defmodule Hippy do
   """
   defdelegate send_operation(uri, operation, attributes, opts \\ []), to: Hippy.Server
 
+  @doc """
+  Sends a request message you've built yourself (see `Hippy.Message.build_request/4`) to an
+  endpoint URL, and decodes the response.
+
+  A `request_id` is assigned if the message doesn't have one. Takes the same `:timeout` and
+  `:req_options` options as `send_operation/2`, and returns the same results.
+  """
+  defdelegate send_message(message, endpoint, opts \\ []), to: Hippy.Server
+
+  @doc """
+  Returns whether a printer can take a job now, given its attributes as returned by
+  `Hippy.Message.printer/1` or `Hippy.Message.printers/1`.
+
+  It's ready when it's accepting jobs (`printer-is-accepting-jobs`), isn't stopped
+  (`printer-state`), and none of its `printer-state-reasons` stops it printing:
+
+    * reasons ending in `-error`, such as `media-jam-error`, stop it;
+    * `-warning` and `-report` reasons, such as `toner-low-report`, don't;
+    * a reason without a suffix, such as `media-empty`, is an error only while the printer is
+      stopped (RFC 8011, section 5.4.12), so it doesn't count separately;
+    * reasons starting with `offline`, which CUPS reports (as `offline-report`) when it can't
+      reach a printer, also stop it, though RFC 8011 doesn't define them.
+
+  The map must include those three attributes; ask for them with `requested_attributes:`.
+
+      iex> Hippy.printer_ready?(%{
+      ...>   "printer-state" => :idle,
+      ...>   "printer-state-reasons" => ["toner-low-report"],
+      ...>   "printer-is-accepting-jobs" => true
+      ...> })
+      true
+  """
+  def printer_ready?(
+        %{"printer-state" => state, "printer-is-accepting-jobs" => accepting} = printer
+      ) do
+    reasons = printer |> Map.get("printer-state-reasons", ["none"]) |> List.wrap()
+
+    accepting == true and state != :stopped and not Enum.any?(reasons, &blocking_reason?/1)
+  end
+
+  def printer_ready?(printer) do
+    raise ArgumentError,
+          "printer_ready?/1 needs printer-state, printer-state-reasons and " <>
+            "printer-is-accepting-jobs, got: " <> inspect(Map.keys(printer))
+  end
+
+  defp blocking_reason?(reason) when is_binary(reason),
+    do: String.ends_with?(reason, "-error") or String.starts_with?(reason, "offline")
+
+  defp blocking_reason?(_reason), do: false
+
   @http_refused 400..499
   @not_delivered [:econnrefused, :nxdomain, :ehostunreach, :enetunreach]
 
@@ -59,7 +192,8 @@ defmodule Hippy do
   Returns whether a request that failed definitely wasn't accepted, so sending it again (for
   example to another printer) can't print it twice.
 
-  Takes any error `send_operation/2` or `send_operation/4` returns, including HTTP problems:
+  Takes any error `send_operation/2`, `send_operation/4` or `send_message/3` returns, including
+  HTTP problems:
 
   | Error | Safe to resend? |
   |---|---|

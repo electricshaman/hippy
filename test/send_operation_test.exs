@@ -40,7 +40,7 @@ defmodule Hippy.SendOperationTest do
 
     {path, req} = sent()
     assert path == "/printers/p"
-    assert Hippy.Message.operation(req) == :validate_job
+    assert Hippy.Message.operation_name(req) == :validate_job
 
     assert names(group(req, :operation)) == [
              "attributes-charset",
