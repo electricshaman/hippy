@@ -87,36 +87,28 @@ end)
 
 ### Send each job to the least busy printer
 
-Add a `print/2` to `MyApp.Fleet` that picks the printer with the shortest queue among those accepting jobs, and moves on to the next one if that printer refuses the job. It doesn't move on after a timeout: the printer may have accepted the job anyway, and trying another would print it twice.
+Add a `print/2` to `MyApp.Fleet` that picks the ready printer with the shortest queue (`Hippy.Printer.ready?/1` checks it's accepting jobs and has no errors such as a paper jam), and moves on to the next one if that printer refuses the job. `Hippy.safe_to_resend?/1` decides that for any error, including HTTP problems: it doesn't move on after a timeout, because the printer may have accepted the job anyway, and trying another would print it twice.
 
 ```elixir
   def print(printer_uris, document) do
     printer_uris
     |> status()
     |> Enum.flat_map(fn
-      {uri, {:ok, %{"printer-state" => state, "printer-is-accepting-jobs" => true} = printer}}
-      when state != :stopped ->
-        [{uri, printer["queued-job-count"]}]
-
-      _unavailable ->
-        []
+      {uri, {:ok, printer}} -> if Hippy.Printer.ready?(printer), do: [{uri, printer}], else: []
+      {_uri, {:error, _}} -> []
     end)
-    |> Enum.sort_by(fn {_uri, queued} -> queued end)
-    |> Enum.reduce_while({:error, :no_printer_available}, fn {uri, _queued}, none ->
+    |> Enum.sort_by(fn {_uri, printer} -> printer["queued-job-count"] end)
+    |> Enum.reduce_while({:error, :no_printer_available}, fn {uri, _printer}, none ->
       case uri |> PrintJob.new(document) |> Hippy.send_operation() do
         {:ok, res} ->
           {:halt, {:ok, uri, Message.job(res)["job-id"]}}
 
-        # The printer refused the job, or couldn't be reached, so nothing was printed.
-        {:error, %error{}} when error in [Hippy.Error, Hippy.HTTPError] ->
-          {:cont, none}
-
-        {:error, %Req.TransportError{reason: :econnrefused}} ->
-          {:cont, none}
-
-        # Anything else, such as a timeout, may have printed: check before trying again.
         {:error, error} ->
-          {:halt, {:error, {:unknown, uri, error}}}
+          # Move on only if the job definitely wasn't accepted. After a timeout, for example,
+          # it may have printed: stop and check, rather than print it twice.
+          if Hippy.safe_to_resend?(error),
+            do: {:cont, none},
+            else: {:halt, {:error, {:unknown, uri, error}}}
       end
     end)
   end
@@ -261,7 +253,7 @@ Hippy.send_operation(op,
 
 Req waits 15 seconds for a response by default. Sending a large document to a slow printer can take longer, so raise it with `timeout: 60_000`, which sets both the connect and the response timeout.
 
-A timeout returns `{:error, %Req.TransportError{reason: :timeout}}`, but **the printer may still have accepted the job**. Hippy never retries a request, so a Print-Job is never submitted twice by accident. Don't blindly resend after a timeout either: check whether the job exists first, e.g. with `Hippy.Operation.GetJobs.new(uri, which_jobs: :not_completed)` and a unique `job_name`.
+A timeout returns `{:error, %Req.TransportError{reason: :timeout}}`, but **the printer may still have accepted the job**. Hippy never retries a request, so a Print-Job is never submitted twice by accident. Don't blindly resend after a timeout either: check whether the job exists first, e.g. with `Hippy.Operation.GetJobs.new(uri, which_jobs: :not_completed)` and a unique `job_name`. `Hippy.safe_to_resend?/1` tells you which errors are safe to resend, for any error `send_operation` returns: IPP and HTTP 4xx errors, refused connections and failed TLS handshakes are; timeouts, closed connections and HTTP 5xx errors aren't.
 
 ## Usage Examples
 

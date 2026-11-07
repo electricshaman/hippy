@@ -184,6 +184,57 @@ defmodule Hippy.Integration.CupsTest do
       refute output =~ "/printers/raw:"
     end
 
+    test "Hippy.Printer.ready? on real printers", %{http: http} do
+      ready =
+        for queue <- ["raw", "held_jobs", "rejecting"], into: %{} do
+          printer =
+            http
+            |> printer(queue)
+            |> GetPrinterAttributes.new(
+              requested_attributes: [
+                "printer-state",
+                "printer-state-reasons",
+                "printer-is-accepting-jobs"
+              ]
+            )
+            |> send!()
+            |> Message.printer()
+
+          {queue, Hippy.Printer.ready?(printer)}
+        end
+
+      assert ready == %{"raw" => true, "held_jobs" => false, "rejecting" => false}
+    end
+
+    test "Hippy.safe_to_resend? on real errors", ctx do
+      error = fn op, opts ->
+        {:error, error} = Hippy.send_operation(op, opts)
+        error
+      end
+
+      # An IPP error, an HTTP error and a refused connection: nothing was printed.
+      assert Hippy.safe_to_resend?(
+               error.(PrintJob.new(printer(ctx.http, "rejecting"), pdf()), [])
+             )
+
+      assert Hippy.safe_to_resend?(
+               error.(GetPrinterAttributes.new(printer(ctx.https, "secure")), @anonymous)
+             )
+
+      assert Hippy.safe_to_resend?(
+               error.(PrintJob.new("ipp://localhost:1/printers/p", pdf()), [])
+             )
+
+      # A timeout after sending: it may have printed.
+      big = :crypto.strong_rand_bytes(25 * 1024 * 1024)
+
+      refute Hippy.safe_to_resend?(
+               error.(PrintJob.new(printer(ctx.http, "raw"), big),
+                 req_options: [receive_timeout: 1]
+               )
+             )
+    end
+
     test "fleet print sends the job to an available printer", %{http: http} do
       fleet = [printer(http, "rejecting"), printer(http, "held_jobs"), printer(http, "raw")]
 
@@ -933,29 +984,21 @@ defmodule Hippy.ReadmeFleet do
     printer_uris
     |> status()
     |> Enum.flat_map(fn
-      {uri, {:ok, %{"printer-state" => state, "printer-is-accepting-jobs" => true} = printer}}
-      when state != :stopped ->
-        [{uri, printer["queued-job-count"]}]
-
-      _unavailable ->
-        []
+      {uri, {:ok, printer}} -> if Hippy.Printer.ready?(printer), do: [{uri, printer}], else: []
+      {_uri, {:error, _}} -> []
     end)
-    |> Enum.sort_by(fn {_uri, queued} -> queued end)
-    |> Enum.reduce_while({:error, :no_printer_available}, fn {uri, _queued}, none ->
+    |> Enum.sort_by(fn {_uri, printer} -> printer["queued-job-count"] end)
+    |> Enum.reduce_while({:error, :no_printer_available}, fn {uri, _printer}, none ->
       case uri |> PrintJob.new(document) |> Hippy.send_operation() do
         {:ok, res} ->
           {:halt, {:ok, uri, Message.job(res)["job-id"]}}
 
-        # The printer refused the job, or couldn't be reached, so nothing was printed.
-        {:error, %error{}} when error in [Hippy.Error, Hippy.HTTPError] ->
-          {:cont, none}
-
-        {:error, %Req.TransportError{reason: :econnrefused}} ->
-          {:cont, none}
-
-        # Anything else, such as a timeout, may have printed: check before trying again.
         {:error, error} ->
-          {:halt, {:error, {:unknown, uri, error}}}
+          # Move on only if the job definitely wasn't accepted. After a timeout, for example,
+          # it may have printed: stop and check, rather than print it twice.
+          if Hippy.safe_to_resend?(error),
+            do: {:cont, none},
+            else: {:halt, {:error, {:unknown, uri, error}}}
       end
     end)
   end

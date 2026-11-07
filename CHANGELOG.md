@@ -43,6 +43,12 @@ Responses and requests are now `%Hippy.Message{}`, which holds a message exactly
 
 ### Added
 
+- `Hippy.safe_to_resend?/1` says whether a failed request definitely wasn't accepted, so sending
+  it again (e.g. to another printer) can't print twice. It takes any error `send_operation`
+  returns: IPP errors, HTTP 4xx errors, refused connections and failed TLS handshakes are safe;
+  timeouts, closed connections and HTTP 5xx errors aren't.
+- `Hippy.Printer.ready?/1` says whether a printer can take a job: accepting jobs, not stopped,
+  and no error-level `printer-state-reasons` (following RFC 8011's severity suffixes).
 - `timeout:` on `Hippy.send_operation/2,4` and `Hippy.Server.send_request/3` sets how long to
   wait, both to connect and for the response.
 - `Hippy.Operation.GetPrinterAttributes` takes `requested_attributes:`, like the other query
