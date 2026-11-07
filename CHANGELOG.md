@@ -20,6 +20,10 @@
   checks. It works the same with any printer.
 - `examples/dashboard.exs`, a live dashboard of printers in one file, built on
   `Hippy.stream_events/2` and Phoenix Playground (#69).
+- `ipp_version:` on `Hippy.send_operation/2,4`, `Hippy.send_message/3` and
+  `Hippy.stream_events/2` sets the IPP version a request is sent with, and
+  `config :hippy, ipp_version: {1, 0}` sets the default for operations (#36). Requests are still
+  sent as 1.1 by default.
 - `Hippy.send_operation/4` accepts IANA's names `:create_printer_subscriptions` and
   `:create_job_subscriptions`. Responses still decode them to Hippy's earlier singular names.
 

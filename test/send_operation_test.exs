@@ -185,6 +185,61 @@ defmodule Hippy.SendOperationTest do
     end
   end
 
+  describe "IPP version" do
+    setup do
+      on_exit(fn -> Application.delete_env(:hippy, :ipp_version) end)
+    end
+
+    defp sent_version, do: elem(sent(), 1).version
+
+    test "1.1 by default, or as given to each send function" do
+      op = Hippy.Operation.GetPrinterAttributes.new(@printer)
+
+      {:ok, _} = Hippy.send_operation(op)
+      assert sent_version() == {1, 1}
+
+      {:ok, _} = Hippy.send_operation(op, ipp_version: {2, 0})
+      assert sent_version() == {2, 0}
+
+      {:ok, _} = Hippy.send_operation(@printer, :get_printer_attributes, %{}, ipp_version: {1, 0})
+      assert sent_version() == {1, 0}
+
+      message = Hippy.Operation.build_request(op)
+
+      {:ok, _} =
+        Hippy.send_message(message, "http://localhost:631/printers/p", ipp_version: {2, 2})
+
+      assert sent_version() == {2, 2}
+    end
+
+    test "config sets the default for operations, but not for messages built by hand" do
+      Application.put_env(:hippy, :ipp_version, {1, 0})
+      op = Hippy.Operation.GetPrinterAttributes.new(@printer)
+
+      {:ok, _} = Hippy.send_operation(op)
+      assert sent_version() == {1, 0}
+
+      {:ok, _} = Hippy.send_operation(op, ipp_version: {2, 0})
+      assert sent_version() == {2, 0}
+
+      message = %{Hippy.Operation.build_request(op) | version: {2, 0}}
+      {:ok, _} = Hippy.send_message(message, "http://localhost:631/printers/p")
+      assert sent_version() == {2, 0}
+    end
+
+    test "anything but {major, minor} raises before sending" do
+      op = Hippy.Operation.GetPrinterAttributes.new(@printer)
+
+      for version <- ["2.0", {2}, {256, 0}, {1, -1}] do
+        assert_raise ArgumentError, ~r/IPP version must be/, fn ->
+          Hippy.send_operation(op, ipp_version: version)
+        end
+      end
+
+      refute_received {:request, _, _}
+    end
+  end
+
   test "unknown operation names return an error" do
     assert Hippy.send_operation(@printer, :print_everything, %{}) ==
              {:error, {:unknown_operation, :print_everything}}

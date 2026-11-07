@@ -1110,6 +1110,34 @@ defmodule Hippy.Integration.CupsTest do
     end
   end
 
+  describe "IPP version" do
+    test "each version a printer supports works, and others are refused", ctx do
+      for uri <- [printer(ctx.http, "raw"), ctx.home] do
+        supported =
+          uri
+          |> GetPrinterAttributes.new(requested_attributes: ["ipp-versions-supported"])
+          |> send!()
+          |> Message.printer()
+          |> Map.fetch!("ipp-versions-supported")
+
+        assert "1.1" in supported and "2.0" in supported
+
+        for version <- supported do
+          [major, minor] = version |> String.split(".") |> Enum.map(&String.to_integer/1)
+
+          assert uri
+                 |> GetPrinterAttributes.new()
+                 |> send!(ipp_version: {major, minor})
+                 |> Message.status() == :successful_ok,
+                 "#{uri} #{version}"
+        end
+
+        assert ipp_error!(GetPrinterAttributes.new(uri), ipp_version: {9, 9}).status ==
+                 :server_error_version_not_supported
+      end
+    end
+  end
+
   describe "Get-Jobs and Get-Job-Attributes" do
     test "which_jobs filters pending jobs", %{http: http} do
       uri = printer(http, "held_jobs")

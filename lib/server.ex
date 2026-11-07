@@ -45,7 +45,9 @@ defmodule Hippy.Server do
 
   def send_operation(op, opts) when is_list(opts) do
     with {:ok, endpoint} <- endpoint(op, opts) do
-      Hippy.Operation.build_request(op)
+      op
+      |> Hippy.Operation.build_request()
+      |> put_version(opts)
       |> send_message(endpoint, opts)
     end
   end
@@ -79,6 +81,7 @@ defmodule Hippy.Server do
 
       operation_id
       |> Hippy.Message.build_request(op, [], data: Keyword.get(opts, :document, <<>>))
+      |> put_version(opts)
       |> send_message(endpoint, opts)
     end
   end
@@ -129,7 +132,8 @@ defmodule Hippy.Server do
   def send_message(%Hippy.Message{} = message, endpoint, opts \\ []) do
     message = %{
       message
-      | request_id: message.request_id || System.unique_integer([:positive, :monotonic])
+      | request_id: message.request_id || System.unique_integer([:positive, :monotonic]),
+        version: opts |> Keyword.get(:ipp_version, message.version) |> validate_version!()
     }
 
     case post(endpoint, Hippy.Encoder.encode(message), opts) do
@@ -201,6 +205,25 @@ defmodule Hippy.Server do
     |> Req.merge(Application.get_env(:hippy, :req_options, []))
     |> Req.merge(req_options(opts))
     |> Req.post(url: url)
+  end
+
+  # The IPP version for an operation: the :ipp_version option, then config, then 1.1.
+  defp put_version(message, opts) do
+    version =
+      Keyword.get_lazy(opts, :ipp_version, fn ->
+        Application.get_env(:hippy, :ipp_version, {1, 1})
+      end)
+
+    %{message | version: validate_version!(version)}
+  end
+
+  defp validate_version!({major, minor} = version)
+       when major in 0..255 and minor in 0..255,
+       do: version
+
+  defp validate_version!(version) do
+    raise ArgumentError,
+          "the IPP version must be {major, minor}, such as {2, 0}, got: #{inspect(version)}"
   end
 
   # :timeout sets both the connect and receive timeouts, unless req_options sets them.
