@@ -1,27 +1,69 @@
 # Hippy
 
-Hippy is an [Internet Printing Protocol](https://en.wikipedia.org/wiki/Internet_Printing_Protocol)  (IPP) client implementation in Elixir for performing distributed printing over HTTP.  In addition to printing documents, IPP also supports a number of other operations such as retrieving print job status, pausing jobs, resuming jobs, etc.
+Hippy is an [Internet Printing Protocol](https://en.wikipedia.org/wiki/Internet_Printing_Protocol) (IPP) client for Elixir. IPP is how computers talk to printers over the network: almost every network printer made in the last decade speaks it, and so does [CUPS](https://en.wikipedia.org/wiki/CUPS), the print server on macOS and Linux. With Hippy you can print documents, follow jobs, ask printers how they're doing, and manage queues, whether that's one printer on your Wi-Fi or a fleet of them.
 
-[CUPS](https://en.wikipedia.org/wiki/CUPS) provides a standard IPP server out of the box, though some higher-end networked printers are also capable of providing their own server.  That said, testing at this early stage has been 100% against CUPS, which is likely more tolerant of any outstanding abuses of the protocol in Hippy alpha versions. ;)
-
-## Obligatory Warning
-This is currently very alpha-stage software and will be evolving quickly.  Please only consider it for production use at your own risk.
+Hippy is pre-1.0, so its API can still change between minor versions (see the [changelog](CHANGELOG.md)). It's tested against a real CUPS server and an emulated driverless printer.
 
 ## Installation
 
-Add `hippy` to your dependencies in `mix.exs`:
+Add `hippy` to your dependencies in `mix.exs`. It needs Elixir 1.15 or later.
 
 ```elixir
 def deps do
   [
-    {:hippy, "~> 0.6.0"}
+    {:hippy, "~> 0.7.0"}
   ]
 end
 ```
 
-## What you can do with it
+## Quick start
 
-Hippy talks to any IPP printer directly, or to a CUPS server in front of them. Most printers made in the last decade speak IPP over your network, usually at `ipp://<printer-address>/ipp/print`. To find yours, look in its network settings, or run `dns-sd -B _ipp._tcp` on a Mac or `avahi-browse -rt _ipp._tcp` on Linux.
+First you need your printer's URI. Driverless printers usually answer at `ipp://<printer-address>/ipp/print`. Find the address in the printer's network settings, or run `dns-sd -B _ipp._tcp` on a Mac or `avahi-browse -rt _ipp._tcp` on Linux. A printer shared by CUPS is at `ipp://<cups-host>:631/printers/<queue-name>`.
+
+Ask the printer about itself, print a PDF, then check on the job:
+
+```elixir
+alias Hippy.Operation.{GetJobAttributes, GetPrinterAttributes, PrintJob}
+
+printer = "ipp://192.168.1.50/ipp/print"
+
+{:ok, res} = printer |> GetPrinterAttributes.new() |> Hippy.send_operation()
+
+res |> Hippy.Message.printer() |> Map.take(["printer-make-and-model", "printer-state"])
+#=> %{"printer-make-and-model" => "Example LaserJet 400", "printer-state" => :idle}
+
+{:ok, res} =
+  "invoice.pdf"
+  |> File.read!()
+  |> then(&PrintJob.new(printer, &1, document_format: "application/pdf", job_name: "Invoice"))
+  |> Hippy.send_operation()
+
+job_id = res |> Hippy.Message.job() |> Map.fetch!("job-id")
+
+{:ok, res} = printer |> GetJobAttributes.new(job_id) |> Hippy.send_operation()
+Hippy.Message.job(res)["job-state"]
+#=> :processing
+```
+
+Ask again later and it will be `:completed`. "Print a document and wait for it to finish" below does that for you.
+
+## How it fits together
+
+Every call above has the same three steps: **build** an operation, **send** it, **read** the response.
+
+| | |
+|---|---|
+| **Build** | `Hippy.Operation.PrintJob.new/3`, `GetPrinterAttributes.new/2`, `GetJobs.new/2`, … are plain data, with no side effects. |
+| **Send** | `Hippy.send_operation/2` sends an operation. Functions named `send_*` are the only ones that touch the network. |
+| **Read** | `Hippy.Message.job/1`, `printer/1`, `jobs/1`, `status/1`, … turn the response into maps with string keys. |
+
+When something goes wrong you get `{:error, exception}`: `Hippy.Error` if the printer refused, `Hippy.HTTPError` for an HTTP problem, or one of Req's exceptions if it couldn't be reached. Two helpers decide what to do next: `Hippy.printer_ready?/1` says whether a printer can take a job, and `Hippy.safe_to_resend?/1` whether a failed request can be sent again without printing twice.
+
+The operations Hippy has modules for cover the common tasks. `Hippy.send_operation/4` sends any of the 118 IPP and CUPS operations in `Hippy.IPP.Operation` by name.
+
+## Things to build
+
+These examples are run against a CUPS server and an emulated driverless printer in Hippy's integration tests, so they work as written.
 
 ### Draw your ink levels in the terminal
 
@@ -228,6 +270,40 @@ Here's the whole page in miniature, every third line and every other character (
                                     .,,.
 ```
 
+### Print a document and wait for it to finish
+
+```elixir
+defmodule MyApp.Printing do
+  alias Hippy.Operation.{GetJobAttributes, PrintJob}
+
+  def print_and_wait(printer_uri, document) do
+    {:ok, res} = printer_uri |> PrintJob.new(document) |> Hippy.send_operation()
+
+    res
+    |> Hippy.Message.job()
+    |> Map.fetch!("job-id")
+    |> wait_for_job(printer_uri)
+  end
+
+  defp wait_for_job(job_id, printer_uri) do
+    {:ok, res} = printer_uri |> GetJobAttributes.new(job_id) |> Hippy.send_operation()
+
+    case Hippy.Message.job(res) do
+      %{"job-state" => state} when state in [:completed, :canceled, :aborted] ->
+        {state, job_id}
+
+      _ ->
+        Process.sleep(1_000)
+        wait_for_job(job_id, printer_uri)
+    end
+  end
+end
+
+document = File.read!("invoice.pdf")
+MyApp.Printing.print_and_wait("ipps://front-desk.local/ipp/print", document)
+# {:completed, 47}
+```
+
 ### Check a fleet of printers at once
 
 With more than one printer, Elixir's concurrency makes it easy to look after them all. Ask every printer for its state at the same time. Each request gives up after five seconds, so one unplugged printer doesn't hold up the rest:
@@ -324,83 +400,33 @@ MyApp.Fleet.print(fleet, label_pdf)
 # {:ok, "ipps://warehouse.local/ipp/print", 1042}
 ```
 
-### Print a document and wait for it to finish
+## Everyday tasks
+
+### Print with settings
+
+Every operation takes `attributes:`, a map of attribute names to values. Hippy looks each one up in the [IANA IPP registry](https://www.iana.org/assignments/ipp-registrations/) to work out its type and where it goes in the request, so you don't need to know that `copies` is a job attribute and `job-name` an operation attribute:
 
 ```elixir
-defmodule MyApp.Printing do
-  alias Hippy.Operation.{GetJobAttributes, PrintJob}
-
-  def print_and_wait(printer_uri, document) do
-    {:ok, res} = printer_uri |> PrintJob.new(document) |> Hippy.send_operation()
-
-    res
-    |> Hippy.Message.job()
-    |> Map.fetch!("job-id")
-    |> wait_for_job(printer_uri)
-  end
-
-  defp wait_for_job(job_id, printer_uri) do
-    {:ok, res} = printer_uri |> GetJobAttributes.new(job_id) |> Hippy.send_operation()
-
-    case Hippy.Message.job(res) do
-      %{"job-state" => state} when state in [:completed, :canceled, :aborted] ->
-        {state, job_id}
-
-      _ ->
-        Process.sleep(1_000)
-        wait_for_job(job_id, printer_uri)
-    end
-  end
-end
-
-document = File.read!("invoice.pdf")
-MyApp.Printing.print_and_wait("ipps://front-desk.local/ipp/print", document)
-# {:completed, 47}
+printer
+|> PrintJob.new(document,
+  attributes: %{
+    "job-name" => "TPS Report",
+    "document-format" => "application/pdf",
+    "copies" => 2,
+    "sides" => "two-sided-long-edge",
+    "orientation-requested" => :landscape,
+    "media-col" => %{"media-size" => %{"x-dimension" => 21000, "y-dimension" => 29700}},
+    # Subscription attributes go in their own group: get notified when the job completes.
+    "notify-pull-method" => "ippget",
+    "notify-events" => ["job-completed"]
+  }
+)
+|> Hippy.send_operation()
 ```
 
-These examples are run against a real CUPS server in Hippy's integration tests. Behind a CUPS server, `Hippy.Operation.CupsGetPrinters` lists its printers (see below).
+Maps are collections and lists are sets. For attributes that can be a keyword or a name (such as `media`), a value spelt like a keyword is sent as one, and anything else as a name. Attributes the registry doesn't know, such as vendor extensions, need their type: `"x-acme-finish" => {:keyword, "matte"}`. See "Attributes as maps" in the `Hippy` docs for the rules.
 
-## Configuration
-
-Hippy uses [Req](https://hex.pm/packages/req) for HTTP and requires Elixir 1.15 or later. Extra Req options (authentication, TLS settings, timeouts, etc.) can be passed per request, or for every request through application config. Options given per request are merged over the configured ones:
-
-```elixir
-config :hippy, req_options: [receive_timeout: 30_000]
-```
-
-```elixir
-Hippy.send_operation(op, req_options: [auth: {:basic, "user:pass"}])
-```
-
-Enum attributes are decoded to atoms for common attributes such as `job-state` and `orientation-requested`, and left as integers otherwise. To decode other enum attributes (e.g. vendor extensions), define an enum and register it by attribute name. Registered enums take precedence over the built-in ones, and `xxx-default` and `xxx-supported` use the enum registered for `xxx`:
-
-```elixir
-defmodule MyApp.VendorState do
-  use Hippy.IPP.Enum, %{idle: 0x01, busy: 0x02}
-end
-
-config :hippy, enums: %{
-  "x-vendor-state" => MyApp.VendorState,
-  "input-orientation-requested" => Hippy.IPP.Orientation
-}
-```
-
-### Errors
-
-An IPP error (a client-error or server-error status) is returned as `{:error, %Hippy.Error{}}`, with the status, the server's status message and the whole response:
-
-```elixir
-{:error, %Hippy.Error{status: :client_error_document_format_not_supported} = error} =
-  Hippy.Operation.PrintJob.new(printer_uri, doc, document_format: "application/x-nope")
-  |> Hippy.send_operation()
-
-Hippy.Message.unsupported(error.response)
-%{"document-format" => "application/x-nope"}
-```
-
-HTTP errors (such as 401 Unauthorized) are `{:error, %Hippy.HTTPError{status: 401}}`, and a printer that can't be reached or times out gives Req's exceptions, such as `{:error, %Req.TransportError{reason: :timeout}}`. Every error once a request is sent is an exception, so `Exception.message/1` describes it.
-
-**`{:ok, response}` doesn't mean every setting was applied.** A printer can accept a job but ignore or change attributes it doesn't support, for example printing one-sided when asked for `two-sided-long-edge`. It then returns `:successful_ok_ignored_or_substituted_attributes`, which is still `{:ok, response}`, and lists the attributes in the response's unsupported group. When the settings matter, check it:
+**A printer can accept a job without applying every setting.** If it doesn't support two-sided printing, for example, it may print one-sided and still succeed, with the status `:successful_ok_ignored_or_substituted_attributes`. When the settings matter, check what it ignored:
 
 ```elixir
 {:ok, res} = Hippy.send_operation(op)
@@ -411,11 +437,138 @@ case Hippy.Message.unsupported(res) do
 end
 ```
 
-## Authentication, TLS and timeouts
+### Stream a large document
+
+A document can be an `Enumerable` of binaries, which is sent as it's read (with chunked transfer encoding) instead of being loaded into memory:
+
+```elixir
+# Elixir 1.16 and later. On 1.15, File.stream!("big.pdf", [], 64_000).
+"big.pdf"
+|> File.stream!(64_000)
+|> then(&PrintJob.new(printer, &1, document_format: "application/pdf"))
+|> Hippy.send_operation()
+```
+
+Some embedded printers don't accept chunked requests. For those, read the file into a binary first.
+
+### List jobs
+
+```elixir
+{:ok, res} = printer |> Hippy.Operation.GetJobs.new() |> Hippy.send_operation()
+
+Hippy.Message.jobs(res)
+#=> [
+#=>   %{"job-id" => 47, "job-name" => "TPS Report", "job-state" => :completed, ...},
+#=>   %{"job-id" => 46, "job-name" => "Untitled Job", "job-state" => :completed, ...}
+#=> ]
+```
+
+By default you get completed jobs. `which_jobs: :not_completed` gives the ones still pending or printing.
+
+### List the printers on a CUPS server
+
+CUPS-Get-Printers is sent to the server rather than a printer. CUPS includes classes in the results; `printer_type: 0, printer_type_mask: 1` leaves them out, and `Hippy.Operation.CupsGetClasses` returns only classes. `Hippy.Operation.CupsGetDefault` returns the default printer.
+
+```elixir
+{:ok, res} =
+  "ipp://localhost:631/"
+  |> Hippy.Operation.CupsGetPrinters.new(requested_attributes: ["printer-name", "printer-state"])
+  |> Hippy.send_operation()
+
+Hippy.Message.printers(res)
+#=> [
+#=>   %{"printer-name" => "HP_Color_LaserJet", "printer-state" => :idle},
+#=>   %{"printer-name" => "Label_Printer", "printer-state" => :stopped}
+#=> ]
+```
+
+### Send any other operation
+
+`Hippy.send_operation/4` sends any IPP or CUPS operation by name (see `Hippy.IPP.Operation`), with attributes as a map. A job URI is sent as the job the operation is about, and CUPS's server-wide operations go to the server:
+
+```elixir
+Hippy.send_operation(printer, :validate_job, %{"document-format" => "application/pdf", "copies" => 2})
+
+Hippy.send_operation("ipp://localhost:631/jobs/47", :hold_job, %{}, req_options: [auth: {:basic, "user:pass"}])
+
+Hippy.send_operation("ipp://localhost:631/", :cups_get_printers, %{"limit" => 10})
+
+# Administration is sent to /admin/, about a printer.
+Hippy.send_operation("ipps://localhost:631/printers/front_desk", :cups_add_modify_printer,
+  %{
+    "printer-uri" => "ipp://localhost/printers/front_desk",
+    "device-uri" => {:uri, "socket://10.0.0.5"},
+    "printer-info" => "Front desk"
+  },
+  endpoint: "https://localhost:631/admin/",
+  req_options: [auth: {:basic, "admin:pass"}]
+)
+```
+
+For complete control over a request, every operation also takes `operation_attributes:`, `job_attributes:` and `groups:`, with each attribute's syntax given explicitly as `{syntax, name, value}`. These replace an attribute of the same name from `attributes:` or Hippy's defaults (see `Hippy.Message.encode/1` for the syntaxes):
+
+```elixir
+PrintJob.new(printer, document,
+  job_attributes: [{:integer, "copies", 2}, {:keyword, "x-acme-finish", "matte"}],
+  groups: [
+    {:subscription,
+     [{:keyword, "notify-pull-method", "ippget"}, {:keyword, "notify-events", "job-completed"}]}
+  ]
+)
+```
+
+Or build a `%Hippy.Message{}` yourself (see `Hippy.Message.build_request/4`) and send it with `Hippy.send_message/3`.
+
+## When things go wrong
+
+Sending returns `{:ok, %Hippy.Message{}}` or `{:error, exception}`, so `Exception.message/1` describes any error:
+
+| Error | When |
+|---|---|
+| `%Hippy.Error{status: ..., message: ..., response: ...}` | The printer answered with an IPP error, such as `:client_error_not_found` or `:server_error_not_accepting_jobs`. The whole response is kept. |
+| `%Hippy.HTTPError{status: ...}` | The server answered with an HTTP error instead, such as 401 Unauthorized. |
+| `%Req.TransportError{reason: ...}` | It couldn't be reached (`:econnrefused`), or didn't answer in time (`:timeout`). |
+
+```elixir
+{:error, %Hippy.Error{status: :client_error_document_format_not_supported} = error} =
+  printer
+  |> PrintJob.new(document, document_format: "application/x-nope")
+  |> Hippy.send_operation()
+
+Hippy.Message.unsupported(error.response)
+#=> %{"document-format" => "application/x-nope"}
+```
+
+### Timeouts, and never printing twice
+
+Req waits 15 seconds for a response by default. Sending a large document to a slow printer can take longer, so raise it with `timeout: 60_000`, which sets both the connect and the response timeout.
+
+A timeout returns `{:error, %Req.TransportError{reason: :timeout}}`, but **the printer may still have accepted the job**. Hippy never retries a request, so a job is never submitted twice by accident. Before you resend one yourself, ask `Hippy.safe_to_resend?/1`:
+
+| Safe to resend | Not safe: the job may have printed |
+|---|---|
+| IPP errors (`Hippy.Error`) | Timeouts |
+| HTTP 4xx errors | Closed connections |
+| Refused connections, unknown hosts | HTTP 5xx errors |
+| Failed TLS handshakes | |
+
+When it isn't safe, check whether the job exists first, e.g. with `GetJobs.new(printer, which_jobs: :not_completed)` and a unique `job_name`. That's why the fleet example above stops, rather than trying the next printer, after an error that isn't safe to resend.
+
+## Connecting
+
+Hippy uses [Req](https://hex.pm/packages/req) for HTTP. Pass Req options for one request with `req_options:`, or for every request in your config. Options given per request are merged over the configured ones:
+
+```elixir
+config :hippy, req_options: [receive_timeout: 30_000]
+```
+
+```elixir
+Hippy.send_operation(op, req_options: [auth: {:basic, "user:pass"}])
+```
 
 ### Authentication
 
-Printers and CUPS servers that require authentication return an HTTP error instead of an IPP response, as `{:error, %Hippy.HTTPError{status: 401}}`. Pass credentials with `req_options: [auth: {:basic, "user:pass"}]`, over HTTPS (an `https://` or `ipps://` printer URI).
+Printers and CUPS servers that require authentication answer with an HTTP error, `{:error, %Hippy.HTTPError{status: 401}}`. Pass credentials with `req_options: [auth: {:basic, "user:pass"}]`, over HTTPS (an `https://` or `ipps://` printer URI).
 
 With its default policy, CUPS lets anyone print and query, but job management such as Cancel-Job needs authentication when the request comes from another machine:
 
@@ -454,142 +607,9 @@ Hippy.send_operation(op,
 
 `transport_opts: [verify: :verify_none]` turns verification off entirely. Only use it for testing, since it lets anyone on the network impersonate the printer and read the documents you send.
 
-### Timeouts and retries
-
-Req waits 15 seconds for a response by default. Sending a large document to a slow printer can take longer, so raise it with `timeout: 60_000`, which sets both the connect and the response timeout.
-
-A timeout returns `{:error, %Req.TransportError{reason: :timeout}}`, but **the printer may still have accepted the job**. Hippy never retries a request, so a Print-Job is never submitted twice by accident. Don't blindly resend after a timeout either: check whether the job exists first, e.g. with `Hippy.Operation.GetJobs.new(uri, which_jobs: :not_completed)` and a unique `job_name`. `Hippy.safe_to_resend?/1` tells you which errors are safe to resend, for any error `send_operation` returns: IPP and HTTP 4xx errors, refused connections and failed TLS handshakes are; timeouts, closed connections and HTTP 5xx errors aren't.
-
-## Usage Examples
-
-### Print a PDF document
-
-```elixir
-printer_uri = "http://localhost:631/printers/HP_Color_LaserJet"
-
-{:ok, res} =
-  "tps_report.pdf"
-  |> File.read!()
-  |> then(&Hippy.Operation.PrintJob.new(printer_uri, &1, job_name: "TPS Report"))
-  |> Hippy.send_operation()
-
-Hippy.Message.job(res)
-%{
-  "job-id" => 47,
-  "job-state" => :pending,
-  "job-state-message" => "",
-  "job-state-reasons" => ["none"],
-  "job-uri" => %URI{scheme: "ipp", host: "localhost", port: 631, path: "/jobs/47", ...}
-}
-```
-
-### Stream a large document
-
-A document can also be an `Enumerable` of binaries, which is sent as it's read (with chunked transfer encoding) instead of being loaded into memory:
-
-```elixir
-# Elixir 1.16 and later. On 1.15, File.stream!("big.pdf", [], 64_000).
-"big.pdf"
-|> File.stream!(64_000)
-|> then(&Hippy.Operation.PrintJob.new(printer_uri, &1, document_format: "application/pdf"))
-|> Hippy.send_operation()
-```
-
-Some embedded printers may not accept chunked requests; for those, read the file into a binary first.
-
-### Send other attributes
-
-Every operation accepts `attributes:`, a map of attribute names to values. Hippy looks each one up in the [IANA IPP registry](https://www.iana.org/assignments/ipp-registrations/) to work out its syntax and which group it goes in, so `copies` and `sides` go in the job attributes and `job-name` in the operation attributes:
-
-```elixir
-Hippy.Operation.PrintJob.new(printer_uri, doc,
-  attributes: %{
-    "job-name" => "TPS Report",
-    "document-format" => "application/pdf",
-    "copies" => 2,
-    "sides" => "two-sided-long-edge",
-    "orientation-requested" => :landscape,
-    "media-col" => %{"media-size" => %{"x-dimension" => 21000, "y-dimension" => 29700}},
-    # Subscription attributes go in their own group: get notified when the job completes.
-    "notify-pull-method" => "ippget",
-    "notify-events" => ["job-completed"]
-  }
-)
-|> Hippy.send_operation()
-```
-
-Maps are collections and lists are sets. For attributes that can be a keyword or a name (such as `media`), a value spelt like a keyword is sent as one, and anything else as a name. `{syntax, value}` gives the syntax explicitly, and is needed for attributes the registry doesn't know, which go in the operation's main group (job attributes for Print-Job). See "Attributes as maps" in the `Hippy` docs.
-
-To control the syntax and group yourself, every operation also accepts `operation_attributes:`, and Print-Job `job_attributes:`, as `{syntax, name, value}` tuples. Other attribute groups go in `groups:`, as `{tag, tuples}`. These replace an attribute of the same name from `attributes:` or Hippy's defaults. See `Hippy.Message.encode/1` for the supported syntaxes.
-
-```elixir
-Hippy.Operation.PrintJob.new(printer_uri, doc,
-  job_attributes: [{:integer, "copies", 2}, {:keyword, "x-acme-finish", "matte"}],
-  groups: [
-    {:subscription,
-     [{:keyword, "notify-pull-method", "ippget"}, {:keyword, "notify-events", "job-completed"}]}
-  ]
-)
-```
-
-### Send any operation
-
-`Hippy.send_operation/4` sends any IPP or CUPS operation by name (see `Hippy.IPP.Operation`), with attributes as a map. A job URI is sent as the job the operation is about, and CUPS's server-wide operations go to the server:
-
-```elixir
-Hippy.send_operation(printer_uri, :validate_job, %{"document-format" => "application/pdf", "copies" => 2})
-
-Hippy.send_operation("ipp://localhost:631/jobs/47", :hold_job, %{}, req_options: [auth: {:basic, "user:pass"}])
-
-Hippy.send_operation("ipp://localhost:631/", :cups_get_printers, %{"limit" => 10})
-
-# Administration is sent to /admin/, about a printer.
-Hippy.send_operation("ipps://localhost:631/printers/front_desk", :cups_add_modify_printer,
-  %{
-    "printer-uri" => "ipp://localhost/printers/front_desk",
-    "device-uri" => {:uri, "socket://10.0.0.5"},
-    "printer-info" => "Front desk"
-  },
-  endpoint: "https://localhost:631/admin/",
-  req_options: [auth: {:basic, "admin:pass"}]
-)
-```
-
-### Get recently completed jobs
-
-```elixir
-{:ok, res} =
-  "http://localhost:631/printers/HP_Color_LaserJet"
-  |> Hippy.Operation.GetJobs.new()
-  |> Hippy.send_operation()
-
-Hippy.Message.jobs(res)
-[
-  %{"job-id" => 47, "job-name" => "TPS Report", "job-state" => :completed, ...},
-  %{"job-id" => 46, "job-name" => "Untitled Job", "job-state" => :completed, ...}
-]
-```
-
-### List the printers on a CUPS server
-
-CUPS-Get-Printers is sent to the server rather than a printer. CUPS includes classes in the results; `printer_type: 0, printer_type_mask: 1` leaves them out, and `Hippy.Operation.CupsGetClasses` returns only classes. `Hippy.Operation.CupsGetDefault` returns the default printer.
-
-```elixir
-{:ok, res} =
-  "ipp://localhost:631/"
-  |> Hippy.Operation.CupsGetPrinters.new(requested_attributes: ["printer-name", "printer-state"])
-  |> Hippy.send_operation()
-
-Hippy.Message.printers(res)
-[
-  %{"printer-name" => "HP_Color_LaserJet", "printer-state" => :idle},
-  %{"printer-name" => "Label_Printer", "printer-state" => :stopped}
-]
-```
-
 ## Reading responses
 
-A response is a `Hippy.Message`, holding the message exactly as the printer sent it. Read its attributes as maps of names to values:
+A response is a `Hippy.Message`. Read its attributes as maps of names to values:
 
 - `Hippy.Message.job/1`: the job, for responses about one job, such as Print-Job and Get-Job-Attributes.
 - `Hippy.Message.jobs/1`: a map per job, for Get-Jobs.
@@ -601,7 +621,7 @@ A response is a `Hippy.Message`, holding the message exactly as the printer sent
 
 In maps, values are converted for convenience: enums are atoms, URIs are `URI`s, dates are `DateTime`s, booleans are `true`/`false` and collections are maps. Attributes and collection members the IANA registry defines as sets, such as `job-state-reasons`, are always lists, even with one value.
 
-The message itself is the wire: groups in the order they were sent, each attribute as `{name, [{syntax, value}, ...]}` with values exactly as sent, so nothing is lost or reinterpreted, and encoding it again gives the same bytes:
+Underneath, the message is exactly what was sent over the wire: groups in order, each attribute as `{name, [{syntax, value}, ...]}` with values as sent. Nothing is lost or reinterpreted, and encoding it again gives the same bytes:
 
 ```elixir
 %Hippy.Message{
@@ -616,14 +636,29 @@ The message itself is the wire: groups in the order they were sent, each attribu
 }
 
 bin |> Hippy.Message.decode() |> Hippy.Message.encode() == bin
-true
+#=> true
+```
+
+### Vendor enums
+
+Enum attributes are decoded to atoms for common attributes such as `job-state` and `orientation-requested`, and left as integers otherwise. To decode others, such as vendor extensions, define an enum and register it by attribute name. Registered enums take precedence over the built-in ones, and `xxx-default` and `xxx-supported` use the enum registered for `xxx`:
+
+```elixir
+defmodule MyApp.VendorState do
+  use Hippy.IPP.Enum, %{idle: 0x01, busy: 0x02}
+end
+
+config :hippy, enums: %{
+  "x-vendor-state" => MyApp.VendorState,
+  "input-orientation-requested" => Hippy.IPP.Orientation
+}
 ```
 
 ## Development
 
 Run the unit tests with `mix test`.
 
-Integration tests run Hippy against a real CUPS server in a throwaway Docker container (see `test/integration/cups/`). They are excluded by default and need a running Docker daemon:
+Integration tests run Hippy against a real CUPS server and `ippeveprinter`, CUPS's emulated driverless printer, in a throwaway Docker container (see `test/integration/cups/`). They are excluded by default and need a running Docker daemon:
 
 ```
 mix test --only cups
