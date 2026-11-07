@@ -503,6 +503,15 @@ end)
 
 It checks the printer every `interval`. A job that starts and finishes between two checks is still reported, with its final state. If the printer can't be reached, it retries a few times and then raises, so run it under a supervisor.
 
+[`examples/dashboard.exs`](https://github.com/electricshaman/hippy/blob/master/examples/dashboard.exs) is a complete live dashboard built this way, in one file: a card per printer with its state, anything wrong with it and its jobs, updated as they change. It uses [Phoenix Playground](https://hex.pm/packages/phoenix_playground), so there's no project to set up:
+
+```
+PRINTERS="ipp://192.168.1.50/ipp/print ipp://cups.local:631/printers/labels" \
+  elixir --no-halt examples/dashboard.exs
+```
+
+Then open http://localhost:4000.
+
 ### Get notified about events
 
 Printers that support subscriptions (CUPS does; many home printers don't) collect events for you, such as jobs completing or the printer stopping. Subscribe, then fetch new events whenever you like:

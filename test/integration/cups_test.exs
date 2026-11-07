@@ -1053,6 +1053,10 @@ defmodule Hippy.Integration.CupsTest do
 
     test "a job that starts and finishes between two checks is still reported", ctx do
       uri = printer(ctx.http, "raw")
+
+      # More finished jobs than the stream asks for at a time. CUPS lists them oldest first.
+      ids = for n <- 1..55, do: uri |> PrintJob.new("old #{n}") |> print!()
+      wait_for_job_state(uri, List.last(ids), [:completed], [])
       # Jobs that completed before the stream started aren't reported, so this is the new one.
       events = collect_events(uri, [interval: 3_000], &(&1["job-state"] == :completed))
 
@@ -1085,11 +1089,17 @@ defmodule Hippy.Integration.CupsTest do
     test "can report only the printer's state", ctx do
       events =
         ctx.http
-        |> printer("raw")
+        |> printer("held_jobs")
         |> Hippy.stream_events(events: ["printer-state-changed"])
         |> Enum.take(1)
 
-      assert [%{"notify-subscribed-event" => "printer-state-changed", "printer-state" => :idle}] =
+      # A paused queue, so its state doesn't depend on other tests' jobs.
+      assert [
+               %{
+                 "notify-subscribed-event" => "printer-state-changed",
+                 "printer-state" => :stopped
+               }
+             ] =
                events
     end
 
