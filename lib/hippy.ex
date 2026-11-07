@@ -2,10 +2,11 @@ defmodule Hippy do
   @moduledoc """
   An IPP client: send operations to printers and CUPS servers, and read their responses.
 
-  Functions that send a request over the network are named `send_*`. Everything else has no side
-  effects: building operations (`Hippy.Operation.PrintJob.new/3` and the other
-  `Hippy.Operation` modules), reading responses and encoding messages (`Hippy.Message`), and the
-  helpers `printer_ready?/1` and `safe_to_resend?/1`.
+  Functions that send requests over the network are named `send_*`, or `stream_events/2` for a
+  stream that sends them as it runs. Everything else has no side effects: building operations
+  (`Hippy.Operation.PrintJob.new/3` and the other `Hippy.Operation` modules), reading responses
+  and encoding messages (`Hippy.Message`), and the helpers `printer_ready?/1` and
+  `safe_to_resend?/1`.
 
       {:ok, res} =
         "ipp://localhost:631/printers/office"
@@ -142,6 +143,71 @@ defmodule Hippy do
   `:req_options` options as `send_operation/2`, and returns the same results.
   """
   defdelegate send_message(message, endpoint, opts \\ []), to: Hippy.Server
+
+  @doc """
+  Returns a lazy `Stream` of a printer's events: its state changing, and its jobs being created,
+  changing state and finishing. Nothing is sent until the stream is run.
+
+      "ipp://192.168.1.50/ipp/print"
+      |> Hippy.stream_events()
+      |> Enum.each(&IO.inspect/1)
+
+      %{
+        "notify-subscribed-event" => "printer-state-changed",
+        "printer-state" => :stopped,
+        "printer-state-reasons" => ["media-empty-error"],
+        "printer-is-accepting-jobs" => true
+      }
+
+      %{
+        "notify-subscribed-event" => "job-state-changed",
+        "notify-job-id" => 47,
+        "job-state" => :completed,
+        "job-state-reasons" => ["job-completed-successfully"],
+        "job-name" => "Invoice"
+      }
+
+  It starts with the printer's current state and each active job's, then reports changes. There
+  are two kinds of event, with these keys:
+
+    * `"printer-state-changed"`: `"printer-state"`, `"printer-state-reasons"` and
+      `"printer-is-accepting-jobs"`.
+    * `"job-state-changed"`: `"notify-job-id"`, `"job-state"`, `"job-state-reasons"` and
+      `"job-name"`. A job being created or finishing is a change of `"job-state"`. Printers can
+      forget a finished job's details: CUPS drops `"job-name"` soon after a job completes.
+
+  The stream runs until it's stopped, so run it in its own process, such as a supervised `Task`
+  that sends each event to a LiveView or GenServer.
+
+  ## How it works
+
+  Every `:interval`, the stream reads the printer's state and its active jobs, and reports what
+  changed, so events always describe the current state. It also lists completed jobs, so a job
+  that starts and finishes between two checks is still reported once, with its final state, though
+  any states in between are missed. It works the same with any printer: CUPS, office printers
+  and printers at home.
+
+  It doesn't use IPP notifications (see `Hippy.Operation.CreatePrinterSubscriptions`): with CUPS,
+  a printer subscription isn't told about jobs being held, released or canceled, and its printer
+  events can carry `printer-state-reasons` from before the change.
+
+  ## Errors
+
+  A check that fails is retried after waiting longer each time. If it fails `:retries` times in a
+  row, or the printer can't be reached when the stream starts, the stream raises the error (a
+  `Hippy.Error`, `Hippy.HTTPError` or Req's exception), so the process running it stops and its
+  supervisor can restart it.
+
+  ## Options
+
+    * `:events` - the kinds of event to report, `"printer-state-changed"` and/or
+      `"job-state-changed"`. Defaults to both. Leaving out job events saves the requests that
+      list jobs.
+    * `:interval` - how often to check, in milliseconds. Defaults to `2_000`.
+    * `:retries` - how many failed checks in a row to retry. Defaults to `3`.
+    * `:timeout` and `:req_options`, as for `send_operation/2`.
+  """
+  def stream_events(printer_uri, opts \\ []), do: Hippy.EventStream.stream(printer_uri, opts)
 
   @doc """
   Returns whether a printer can take a job now, given its attributes as returned by

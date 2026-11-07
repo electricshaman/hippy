@@ -14,6 +14,10 @@
 - Subscriptions and notifications (#37): `Hippy.Operation.CreatePrinterSubscriptions`,
   `CreateJobSubscriptions`, `GetNotifications`, `RenewSubscription` and `CancelSubscription`,
   with `Hippy.Message.subscriptions/1` and `Hippy.Message.events/1` to read the results.
+- `Hippy.stream_events/2`, a lazy stream of a printer's events: its current state, then each
+  change to the printer and its jobs, as maps with a fixed set of keys (#69). It checks the
+  printer every `:interval`, and also reports jobs that started and finished between two
+  checks. It works the same with any printer.
 - `Hippy.send_operation/4` accepts IANA's names `:create_printer_subscriptions` and
   `:create_job_subscriptions`. Responses still decode them to Hippy's earlier singular names.
 

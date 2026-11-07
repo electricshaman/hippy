@@ -977,6 +977,129 @@ defmodule Hippy.Integration.CupsTest do
     end
   end
 
+  describe "Hippy.stream_events/2" do
+    # Runs a stream in a task until `done?` is true for an event, so it stops on its own.
+    defp collect_events(uri, opts, done?) do
+      Task.async(fn ->
+        uri
+        |> Hippy.stream_events(opts)
+        |> Enum.reduce_while([], fn event, events ->
+          if done?.(event), do: {:halt, [event | events]}, else: {:cont, [event | events]}
+        end)
+        |> Enum.reverse()
+      end)
+    end
+
+    defp summary(events) do
+      Enum.map(events, fn
+        %{"notify-subscribed-event" => "printer-state-changed"} = e ->
+          {:printer, e["printer-state"], e["printer-state-reasons"]}
+
+        e ->
+          {e["notify-job-id"], e["job-state"]}
+      end)
+    end
+
+    test "reports each change to the printer and its jobs, as it is now", ctx do
+      name = "events_#{System.unique_integer([:positive])}"
+      on_exit(fn -> docker(["exec", ctx.container, "lpadmin", "-x", name]) end)
+
+      container_exec(ctx.container, [
+        "lpadmin",
+        "-p",
+        name,
+        "-E",
+        "-v",
+        "file:///dev/null",
+        "-m",
+        "raw"
+      ])
+
+      container_exec(ctx.container, ["cupsdisable", name])
+
+      uri = printer(ctx.https, name)
+
+      events =
+        collect_events(uri, [interval: 200] ++ @user, &(&1["printer-state"] == :idle))
+
+      step = fn -> Process.sleep(600) end
+
+      step.()
+      id = uri |> PrintJob.new(pdf(), job_name: "Watched") |> print!(@user)
+      step.()
+      uri |> HoldJob.new(id) |> send!(@user)
+      step.()
+      uri |> ReleaseJob.new(id) |> send!(@user)
+      step.()
+      uri |> CancelJob.new(id) |> send!(@user)
+      step.()
+      uri |> ResumePrinter.new() |> send!(@admin)
+
+      events = Task.await(events, 15_000)
+
+      # Including what CUPS doesn't send notifications for (hold, release, cancel), and the
+      # printer's reasons as they are after resuming.
+      assert summary(events) == [
+               {:printer, :stopped, ["paused"]},
+               {id, :pending},
+               {id, :pending_held},
+               {id, :pending},
+               {id, :canceled},
+               {:printer, :idle, ["none"]}
+             ]
+
+      assert %{"job-name" => "Watched", "job-state-reasons" => [_ | _]} = Enum.at(events, 1)
+    end
+
+    test "a job that starts and finishes between two checks is still reported", ctx do
+      uri = printer(ctx.http, "raw")
+      # Jobs that completed before the stream started aren't reported, so this is the new one.
+      events = collect_events(uri, [interval: 3_000], &(&1["job-state"] == :completed))
+
+      Process.sleep(500)
+      id = uri |> PrintJob.new("tiny", job_name: "Quick") |> print!()
+
+      events = events |> Task.await(15_000) |> Enum.filter(&(&1["notify-job-id"] == id))
+      assert summary(events) == [{id, :completed}]
+    end
+
+    test "works the same with a printer at home", %{home: home} do
+      # The emulated printer takes one job at a time, and may still be printing another test's.
+      Stream.repeatedly(fn ->
+        Process.sleep(200)
+        home |> GetPrinterAttributes.new() |> send!() |> Message.printer()
+      end)
+      |> Enum.find(&(&1["printer-state"] == :idle))
+
+      events = collect_events(home, [interval: 200], &(&1["job-state"] == :completed))
+      Process.sleep(500)
+      id = home |> PrintJob.new(pdf(), document_format: "application/pdf") |> print!()
+
+      [printer | jobs] = Task.await(events, 30_000)
+
+      assert printer["notify-subscribed-event"] == "printer-state-changed"
+      assert List.last(jobs)["notify-job-id"] == id
+      assert List.last(jobs)["job-state"] == :completed
+    end
+
+    test "can report only the printer's state", ctx do
+      events =
+        ctx.http
+        |> printer("raw")
+        |> Hippy.stream_events(events: ["printer-state-changed"])
+        |> Enum.take(1)
+
+      assert [%{"notify-subscribed-event" => "printer-state-changed", "printer-state" => :idle}] =
+               events
+    end
+
+    test "a printer that can't be reached raises" do
+      assert_raise Req.TransportError, fn ->
+        "ipp://localhost:1/printers/none" |> Hippy.stream_events() |> Enum.take(1)
+      end
+    end
+  end
+
   describe "Get-Jobs and Get-Job-Attributes" do
     test "which_jobs filters pending jobs", %{http: http} do
       uri = printer(http, "held_jobs")
