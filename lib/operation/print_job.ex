@@ -18,8 +18,8 @@ defmodule Hippy.Operation.PrintJob do
     * `:operation_attributes` and `:job_attributes` - extra attributes for each group, as
       `{syntax, name, value}` tuples (see `Hippy.Encoder.encode/1`). Each replaces an attribute
       of the same name that Hippy would otherwise send.
-    * `:groups` - other attribute groups, as `{tag, attributes}` (see `Hippy.Request`), e.g. a
-      `:subscription_attributes` group to be notified about the job.
+    * `:groups` - other attribute groups, as `{tag, attributes}` (see `Hippy.Message`), e.g. a
+      `:subscription` group to be notified about the job.
 
   For example, to print two double-sided copies:
 
@@ -70,7 +70,7 @@ end
 
 defimpl Hippy.Operation, for: Hippy.Operation.PrintJob do
   def build_request(op) do
-    Hippy.Request.new(
+    Hippy.Message.build_request(
       Hippy.IPP.Operation.print_job(),
       op,
       [{:name_without_language, "job-name", op.job_name}] ++ document_format(op),

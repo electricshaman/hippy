@@ -38,7 +38,8 @@ end
 
 defimpl Hippy.Operation, for: Hippy.Operation.GetJobAttributes do
   def build_request(op) do
-    Hippy.Request.new(Hippy.IPP.Operation.get_job_attributes(), op, [
+    Hippy.IPP.Operation.get_job_attributes()
+    |> Hippy.Message.build_request(op, [
       {:integer, "job-id", op.job_id},
       {{:set1, :keyword}, "requested-attributes", op.requested_attributes}
     ])

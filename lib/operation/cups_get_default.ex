@@ -3,7 +3,7 @@ defmodule Hippy.Operation.CupsGetDefault do
   Represents a CUPS-Get-Default request, which returns the default printer on a CUPS server.
 
   It is sent to the server rather than a printer, e.g. `CupsGetDefault.new("ipp://localhost:631/")`.
-  Use `Hippy.Response.printer/1` on the response. When no default is set, CUPS returns
+  Use `Hippy.Message.printer/1` on the response. When no default is set, CUPS returns
   an error with status `:client_error_not_found`.
 
   Takes `:requested_attributes` (defaults to `["all"]`), `:charset`, `:language` and
@@ -39,7 +39,8 @@ end
 
 defimpl Hippy.Operation, for: Hippy.Operation.CupsGetDefault do
   def build_request(op) do
-    Hippy.Request.new(Hippy.IPP.Operation.cups_get_default(), op, [
+    Hippy.IPP.Operation.cups_get_default()
+    |> Hippy.Message.build_request(op, [
       {{:set1, :keyword}, "requested-attributes", op.requested_attributes}
     ])
   end

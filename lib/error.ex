@@ -5,7 +5,7 @@ defmodule Hippy.Error do
     * `:status` - the status, e.g. `:client_error_not_found`, or the integer if Hippy doesn't
       know it.
     * `:message` - the response's `status-message`, if the server sent one.
-    * `:response` - the whole `Hippy.Response`, e.g. for `Hippy.Response.unsupported/1`.
+    * `:response` - the whole response, a `Hippy.Message`, e.g. for `Hippy.Message.unsupported/1`.
   """
 
   defexception [:status, :message, :response]
@@ -20,29 +20,27 @@ defmodule Hippy.Error do
   defp format(status), do: "0x" <> String.pad_leading(Integer.to_string(status, 16), 4, "0")
 
   @doc false
-  # Returns {:ok, response}, or {:error, %Hippy.Error{}} for an error status.
-  def from_response(%Hippy.Response{status_code: status} = response) do
-    if status_class(status) in [0x04, 0x05] do
-      {:error, %__MODULE__{status: status, message: status_message(response), response: response}}
+  # Returns {:ok, message}, or {:error, %Hippy.Error{}} for an error status.
+  def from_response(%Hippy.Message{code: code} = message) do
+    if Bitwise.bsr(code, 8) in [0x04, 0x05] do
+      {:error,
+       %__MODULE__{
+         status: Hippy.Message.status(message),
+         message: status_message(message),
+         response: message
+       }}
     else
-      {:ok, response}
+      {:ok, message}
     end
   end
 
-  defp status_class(status) when is_integer(status), do: Bitwise.bsr(status, 8)
-
-  defp status_class(status) do
-    case Hippy.IPP.StatusCode.encode(status) do
-      {:ok, value} -> status_class(value)
-      {:error, _} -> nil
-    end
-  end
-
-  defp status_message(%Hippy.Response{operation_attributes: attributes}) do
-    case List.keyfind(attributes, "status-message", 1) do
-      {_syntax, _name, message} when is_binary(message) -> message
-      {_syntax, _name, {_language, message}} -> message
+  defp status_message(%Hippy.Message{groups: [{:operation, attributes} | _]}) do
+    case List.keyfind(attributes, "status-message", 0) do
+      {_name, [{_syntax, {_language, text}} | _]} -> text
+      {_name, [{_syntax, text} | _]} when is_binary(text) -> text
       _ -> nil
     end
   end
+
+  defp status_message(_message), do: nil
 end

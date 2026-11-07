@@ -83,12 +83,12 @@ defmodule Hippy.AttributeInference do
     operation: :operation,
     job_template: :job,
     job_description: :job,
-    subscription_template: :subscription_attributes,
-    printer_description: :printer_attributes,
-    document_template: :document_attributes,
-    document_description: :document_attributes,
-    system_description: :system_attributes,
-    resource_description: :resource_attributes
+    subscription_template: :subscription,
+    printer_description: :printer,
+    document_template: :document,
+    document_description: :document,
+    system_description: :system,
+    resource_description: :resource
   }
 
   @out_of_band [
@@ -103,7 +103,7 @@ defmodule Hippy.AttributeInference do
 
   @doc """
   Places attributes for an operation, returning `%{operation: [...], job: [...], groups: [...]}`
-  with attribute tuples ready for `Hippy.Request`.
+  with attribute tuples ready for `Hippy.Message.build_request/4`.
   """
   def place(operation_id, attributes) do
     placed =
@@ -147,7 +147,7 @@ defmodule Hippy.AttributeInference do
 
   @doc """
   Returns where an attribute goes in a request for an operation: `:operation`, `:job`, or a
-  group tag such as `:printer_attributes`. Raises `ArgumentError` for attributes the registry
+  group tag such as `:printer`. Raises `ArgumentError` for attributes the registry
   doesn't know, or that can't be sent in a request.
   """
   def group(operation_id, name) do

@@ -35,7 +35,7 @@ defmodule Hippy.ServerTest do
       |> Plug.Conn.send_resp(200, response)
     end)
 
-    assert {:ok, %Hippy.Response{status_code: :successful_ok}} =
+    assert {:ok, %Hippy.Message{code: 0x0000}} =
              Server.send_operation(GetJobs.new(@endpoint))
   end
 
@@ -152,7 +152,7 @@ defmodule Hippy.ServerTest do
                Server.send_operation(GetJobs.new(@endpoint))
 
       assert error.message == "The printer or class does not exist."
-      assert %Hippy.Response{status_code: :client_error_not_found} = error.response
+      assert %Hippy.Message{code: 0x0406} = error.response
 
       assert Exception.message(error) ==
                "IPP error client_error_not_found: The printer or class does not exist."
@@ -166,22 +166,17 @@ defmodule Hippy.ServerTest do
     test "successful statuses, including ones with a warning, are ok" do
       respond_with(0x0001)
 
-      assert {:ok, %Hippy.Response{status_code: :successful_ok_ignored_or_substituted_attributes}} =
-               Server.send_operation(GetJobs.new(@endpoint))
+      assert {:ok, response} = Server.send_operation(GetJobs.new(@endpoint))
+      assert Hippy.Message.status(response) == :successful_ok_ignored_or_substituted_attributes
     end
 
-    test "error statuses Hippy doesn't know are still errors, and raw: true works" do
+    test "error statuses Hippy doesn't know are still errors" do
       respond_with(0x04FF)
 
       assert {:error, %Hippy.Error{status: 0x04FF} = error} =
                Server.send_operation(GetJobs.new(@endpoint))
 
       assert Exception.message(error) == "IPP error 0x04FF"
-
-      respond_with(0x0406)
-
-      assert {:error, %Hippy.Error{status: 0x0406}} =
-               Server.send_operation(GetJobs.new(@endpoint), raw: true)
     end
   end
 

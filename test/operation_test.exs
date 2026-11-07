@@ -1,7 +1,7 @@
 defmodule Hippy.OperationTest do
   use ExUnit.Case, async: true
 
-  alias Hippy.Operation
+  alias Hippy.{Message, Operation}
 
   alias Hippy.Operation.{
     CancelJob,
@@ -16,6 +16,16 @@ defmodule Hippy.OperationTest do
 
   @uri "http://localhost:631/printers/p"
 
+  # The attributes of a message's first group with a tag, or [] if there isn't one.
+  defp group(%Message{groups: groups}, tag) do
+    case List.keyfind(groups, tag, 0) do
+      {^tag, attributes} -> attributes
+      nil -> []
+    end
+  end
+
+  defp names(attributes), do: Enum.map(attributes, &elem(&1, 0))
+
   test "printer-uri uses ipp for http and ipps for https" do
     for {uri, target} <- [
           {"http://h/p", "ipp://h/p"},
@@ -23,21 +33,25 @@ defmodule Hippy.OperationTest do
           {"ipp://h/p", "ipp://h/p"},
           {"ipps://h/p", "ipps://h/p"}
         ] do
-      req = Operation.build_request(GetPrinterAttributes.new(uri))
-      assert {:uri, "printer-uri", target} in req.operation_attributes
+      message = uri |> GetPrinterAttributes.new() |> Operation.build_request()
+      assert {"printer-uri", [uri: target]} in group(message, :operation)
     end
   end
 
   test "document-format is only sent when given" do
-    req = Operation.build_request(PrintJob.new(@uri, "doc"))
-    refute List.keymember?(req.operation_attributes, "document-format", 1)
+    message = @uri |> PrintJob.new("doc") |> Operation.build_request()
+    refute "document-format" in names(group(message, :operation))
 
-    req = Operation.build_request(PrintJob.new(@uri, "doc", document_format: "application/pdf"))
-    assert {:mime_media_type, "document-format", "application/pdf"} in req.operation_attributes
+    message =
+      @uri
+      |> PrintJob.new("doc", document_format: "application/pdf")
+      |> Operation.build_request()
+
+    assert {"document-format", [mime_media_type: "application/pdf"]} in group(message, :operation)
   end
 
   test "extra attributes are appended, or replace attributes of the same name" do
-    req =
+    message =
       PrintJob.new(@uri, "doc",
         job_name: "Default",
         operation_attributes: [
@@ -48,7 +62,7 @@ defmodule Hippy.OperationTest do
       )
       |> Operation.build_request()
 
-    assert Enum.map(req.operation_attributes, &elem(&1, 1)) == [
+    assert names(group(message, :operation)) == [
              "attributes-charset",
              "attributes-natural-language",
              "printer-uri",
@@ -56,27 +70,27 @@ defmodule Hippy.OperationTest do
              "ipp-attribute-fidelity"
            ]
 
-    assert {:name_with_language, "job-name", {"fr", "Rapport"}} in req.operation_attributes
+    assert {"job-name", [name_with_language: {"fr", "Rapport"}]} in group(message, :operation)
 
-    assert req.job_attributes == [
-             {:enum, "orientation-requested", 4},
-             {:integer, "copies", 2}
+    assert group(message, :job) == [
+             {"orientation-requested", [enum: 4]},
+             {"copies", [integer: 2]}
            ]
   end
 
   describe "CUPS server operations" do
     test "have no printer-uri, and only send the filters given" do
-      req = Operation.build_request(CupsGetPrinters.new("ipp://localhost:631/"))
+      message = "ipp://localhost:631/" |> CupsGetPrinters.new() |> Operation.build_request()
 
-      assert req.operation_id == 0x4002
+      assert message.code == 0x4002
 
-      assert req.operation_attributes == [
-               {:charset, "attributes-charset", "utf-8"},
-               {:natural_language, "attributes-natural-language", "en"},
-               {{:set1, :keyword}, "requested-attributes", ["all"]}
+      assert group(message, :operation) == [
+               {"attributes-charset", [charset: "utf-8"]},
+               {"attributes-natural-language", [natural_language: "en"]},
+               {"requested-attributes", [keyword: "all"]}
              ]
 
-      req =
+      message =
         CupsGetClasses.new("ipp://localhost:631/",
           requested_attributes: ["printer-name"],
           limit: 5,
@@ -87,36 +101,47 @@ defmodule Hippy.OperationTest do
         )
         |> Operation.build_request()
 
-      assert req.operation_id == 0x4005
+      assert message.code == 0x4005
 
-      assert Enum.drop(req.operation_attributes, 2) == [
-               {{:set1, :keyword}, "requested-attributes", ["printer-name"]},
-               {:integer, "limit", 5},
-               {:name_without_language, "first-printer-name", "b"},
-               {:text_without_language, "printer-location", "Lab"},
-               {:enum, "printer-type", 0},
-               {:enum, "printer-type-mask", 1}
+      assert message |> group(:operation) |> Enum.drop(2) == [
+               {"requested-attributes", [keyword: "printer-name"]},
+               {"limit", [integer: 5]},
+               {"first-printer-name", [name_without_language: "b"]},
+               {"printer-location", [text_without_language: "Lab"]},
+               {"printer-type", [enum: 0]},
+               {"printer-type-mask", [enum: 1]}
              ]
 
-      req = Operation.build_request(CupsGetDefault.new("ipp://localhost:631/"))
-      assert req.operation_id == 0x4001
-      refute List.keymember?(req.operation_attributes, "printer-uri", 1)
+      message = "ipp://localhost:631/" |> CupsGetDefault.new() |> Operation.build_request()
+      assert message.code == 0x4001
+      refute "printer-uri" in names(group(message, :operation))
     end
   end
 
-  test "operations add their groups after any given to Request.new/4" do
-    subscription = {:subscription_attributes, [{:keyword, "notify-events", "job-completed"}]}
+  test "operations add their groups after any given to build_request/4" do
+    subscription = {:subscription, [{:keyword, "notify-events", "job-completed"}]}
 
-    req = Operation.build_request(PrintJob.new(@uri, "doc", groups: [subscription]))
-    assert req.groups == [subscription]
+    message = @uri |> PrintJob.new("doc", groups: [subscription]) |> Operation.build_request()
+    assert {:subscription, [{"notify-events", [keyword: "job-completed"]}]} in message.groups
 
-    printer = {:printer_attributes, [{:text_without_language, "printer-location", "Lab"}]}
+    printer = {:printer, [{:text_without_language, "printer-location", "Lab"}]}
     op = GetPrinterAttributes.new(@uri, groups: [subscription])
-    assert Hippy.Request.new(0x0B, op, [], groups: [printer]).groups == [printer, subscription]
+
+    assert 0x0B
+           |> Message.build_request(op, [], groups: [printer])
+           |> Map.fetch!(:groups)
+           |> Enum.map(&elem(&1, 0)) == [:operation, :printer, :subscription]
+  end
+
+  test "group names from before 0.7 are accepted" do
+    old = {:subscription_attributes, [{:keyword, "notify-events", "job-completed"}]}
+    message = @uri |> PrintJob.new("doc", groups: [old]) |> Operation.build_request()
+
+    assert {:subscription, [{"notify-events", [keyword: "job-completed"]}]} in message.groups
   end
 
   test "attributes are placed by inference, and explicit options override them" do
-    req =
+    message =
       PrintJob.new(@uri, "doc",
         job_name: "Default",
         attributes: %{
@@ -129,8 +154,12 @@ defmodule Hippy.OperationTest do
       |> Operation.build_request()
 
     # Inferred attributes replace the defaults; explicit ones replace inferred ones.
-    assert {:name_without_language, "job-name", "Inferred"} in req.operation_attributes
-    assert req.job_attributes == [{:enum, "orientation-requested", 4}, {:integer, "copies", 3}]
+    assert {"job-name", [name_without_language: "Inferred"]} in group(message, :operation)
+
+    assert group(message, :job) == [
+             {"orientation-requested", [enum: 4]},
+             {"copies", [integer: 3]}
+           ]
   end
 
   test "every operation accepts operation attributes" do
@@ -146,7 +175,8 @@ defmodule Hippy.OperationTest do
           CupsGetClasses.new(@uri, operation_attributes: [extra]),
           CupsGetDefault.new(@uri, operation_attributes: [extra])
         ] do
-      assert List.last(Operation.build_request(op).operation_attributes) == extra
+      assert op |> Operation.build_request() |> group(:operation) |> List.last() ==
+               {"requesting-user-name", [name_without_language: "hippy"]}
     end
   end
 end
