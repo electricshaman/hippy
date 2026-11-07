@@ -40,14 +40,37 @@ defmodule Hippy.Integration.CupsTest do
   setup_all do
     {_, 0} = docker(["build", "-q", "-t", @image, @context])
     name = "hippy-cups-#{System.unique_integer([:positive])}"
-    {_, 0} = docker(["run", "-d", "--rm", "--name", name, "-p", "127.0.0.1::631", @image])
+
+    {_, 0} =
+      docker([
+        "run",
+        "-d",
+        "--rm",
+        "--name",
+        name,
+        "-p",
+        "127.0.0.1::631",
+        "-p",
+        "127.0.0.1::8631",
+        @image
+      ])
+
     on_exit(fn -> docker(["rm", "-f", name]) end)
 
     wait_until_ready(name)
-    {port, 0} = docker(["port", name, "631/tcp"])
-    port = port |> String.trim() |> String.split(":") |> List.last()
 
-    %{container: name, http: "http://localhost:#{port}", https: "https://localhost:#{port}"}
+    port = fn container_port ->
+      {port, 0} = docker(["port", name, "#{container_port}/tcp"])
+      port |> String.trim() |> String.split(":") |> List.last()
+    end
+
+    %{
+      container: name,
+      http: "http://localhost:#{port.(631)}",
+      https: "https://localhost:#{port.(631)}",
+      # An emulated driverless printer, as at home.
+      home: "ipp://localhost:#{port.(8631)}/ipp/print"
+    }
   end
 
   setup do
@@ -827,11 +850,61 @@ defmodule Hippy.Integration.CupsTest do
 
   # Helpers
 
+  describe "README home printer examples, on an emulated driverless printer" do
+    test "the ink gauge shows each supply", %{home: home} do
+      {:ok, gauge} = Hippy.ReadmeInk.gauge(home)
+      plain = String.replace(gauge, ~r/\e\[[0-9;]*m/, "")
+
+      assert plain =~ ~r/^Toner Waste Tank +█{5}░{15} 25% full$/mu
+      assert plain =~ ~r/^Black Toner +█{15}░{5} 75%$/mu
+    end
+
+    test "the Mandelbrot page is a valid PDF that fills the page", %{home: home} = ctx do
+      lines = Hippy.ReadmeMandelbrot.lines()
+      assert length(lines) == 120
+      assert Enum.all?(lines, &(String.length(&1) == 150))
+      # Light characters only: nothing that needs escaping in a PDF string.
+      assert lines |> Enum.join() |> String.match?(~r/^[ .,:;~=+*-]+$/)
+
+      pdf = Hippy.ReadmeMandelbrot.pdf()
+      [_, xref] = Regex.run(~r/startxref\n(\d+)\n%%EOF\n$/, pdf)
+      xref = String.to_integer(xref)
+      assert binary_part(pdf, xref, 5) == "xref\n"
+
+      # Each object's offset in the cross-reference table points at that object.
+      offsets = Regex.scan(~r/^(\d{10}) 00000 n $/m, pdf, capture: :all_but_first)
+
+      for {[offset], i} <- Enum.with_index(offsets, 1) do
+        header = "#{i} 0 obj\n"
+        assert binary_part(pdf, String.to_integer(offset), byte_size(header)) == header
+      end
+
+      assert {:ok, res} = Hippy.ReadmeMandelbrot.print(home)
+      assert %{"job-id" => job_id} = Message.job(res)
+
+      # The printer received exactly that PDF (ippeveprinter keeps it, named after the job).
+      spooled = "/spool/home/#{job_id}-mandelbrot.pdf"
+      wait_for_file(ctx.container, spooled)
+      assert container_exec(ctx.container, ["cat", spooled]) == pdf
+    end
+  end
+
   defp docker(args), do: System.cmd("docker", args, stderr_to_stdout: true)
 
   defp container_exec(container, cmd) do
     {out, 0} = docker(["exec", container | cmd])
     out
+  end
+
+  defp wait_for_file(container, path, attempts \\ 50) do
+    case docker(["exec", container, "test", "-s", path]) do
+      {_, 0} ->
+        :ok
+
+      _missing when attempts > 0 ->
+        Process.sleep(100)
+        wait_for_file(container, path, attempts - 1)
+    end
   end
 
   defp wait_until_ready(name, attempts \\ 300) do
@@ -1017,5 +1090,141 @@ defmodule Hippy.ReadmeFleet do
             else: {:halt, {:error, {:unknown, uri, error}}}
       end
     end)
+  end
+end
+
+# The README's MyApp.Ink and MyApp.Mandelbrot examples, as written there.
+defmodule Hippy.ReadmeInk do
+  alias Hippy.Operation.GetPrinterAttributes
+
+  @colors %{"black" => :light_black, "cyan" => :cyan, "magenta" => :magenta, "yellow" => :yellow}
+
+  def gauge(uri) do
+    with {:ok, res} <-
+           uri
+           |> GetPrinterAttributes.new(
+             requested_attributes: ["printer-supply", "printer-supply-description"]
+           )
+           |> Hippy.send_operation(timeout: 5_000) do
+      printer = Hippy.Message.printer(res)
+      names = Map.get(printer, "printer-supply-description", [])
+
+      printer
+      |> Map.get("printer-supply", [])
+      |> Enum.map(&parse/1)
+      |> Enum.with_index(fn supply, i -> bar(supply, Enum.at(names, i)) end)
+      |> Enum.join("\n")
+      |> then(&{:ok, &1})
+    end
+  end
+
+  # "type=toner;level=75;..." -> %{"type" => "toner", "level" => "75", ...}
+  defp parse(supply) do
+    supply
+    |> String.split(";", trim: true)
+    |> Map.new(&(&1 |> String.split("=", parts: 2) |> List.to_tuple()))
+  end
+
+  defp bar(supply, name) do
+    label = String.pad_trailing(name || supply["type"] || "supply", 18)
+
+    with {level, ""} when level >= 0 <- Integer.parse(supply["level"] || ""),
+         {max, ""} when max > 0 <- Integer.parse(supply["maxcapacity"] || "100") do
+      percent = min(div(level * 100, max), 100)
+      filled = div(percent, 5)
+      color = Map.get(@colors, supply["colorantname"], :white)
+      # A waste tank's level is how full it is, not how much is left.
+      full = if supply["class"] == "receptacleThatIsFilled", do: " full", else: ""
+
+      bar =
+        IO.ANSI.format(
+          [color, String.duplicate("█", filled), :reset] ++
+            [:faint, String.duplicate("░", 20 - filled), :reset]
+        )
+
+      "#{label} #{bar} #{percent}%#{full}"
+    else
+      _unknown -> "#{label} level unknown"
+    end
+  end
+end
+
+defmodule Hippy.ReadmeMandelbrot do
+  alias Hippy.Operation.{GetPrinterAttributes, PrintJob}
+
+  @columns 150
+  @rows 120
+  # Nothing for the set itself or the outer bands, then lighter to heavier characters.
+  @ramp ~c"     .,:;~-=+*"
+
+  def print(uri) do
+    with {:ok, res} <-
+           uri
+           |> GetPrinterAttributes.new(requested_attributes: ["document-format-supported"])
+           |> Hippy.send_operation(),
+         %{"document-format-supported" => formats} = Hippy.Message.printer(res),
+         true <- "application/pdf" in formats || {:error, :pdf_not_supported} do
+      uri
+      |> PrintJob.new(pdf(), document_format: "application/pdf", job_name: "Mandelbrot")
+      |> Hippy.send_operation()
+    end
+  end
+
+  def lines do
+    for row <- 0..(@rows - 1) do
+      for col <- 0..(@columns - 1), into: "" do
+        # The real axis runs down the page, so the set fills a tall sheet.
+        <<char(escape(0.55 - row * 2.6 / @rows, -0.975 + col * 1.95 / @columns))>>
+      end
+    end
+  end
+
+  # How many steps z = z² + c takes to escape, or :inside if it never does.
+  defp escape(re, im, zr \\ 0.0, zi \\ 0.0, n \\ 0)
+  defp escape(_re, _im, _zr, _zi, 80), do: :inside
+  defp escape(_re, _im, zr, zi, n) when zr * zr + zi * zi > 4, do: n
+
+  defp escape(re, im, zr, zi, n),
+    do: escape(re, im, zr * zr - zi * zi + re, 2 * zr * zi + im, n + 1)
+
+  defp char(:inside), do: ?\s
+  defp char(n), do: Enum.at(@ramp, min(n, length(@ramp) - 1))
+
+  # A one-page PDF: the lines in 6-point Courier, in light grey, on a Letter page.
+  def pdf do
+    text = lines() |> Enum.map_join("\n", &"(#{&1}) '")
+    content = "BT /F1 6 Tf 6 TL 0.55 g 36 762 Td\n#{text}\nET"
+
+    objects = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] " <>
+        "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+      "<< /Length #{byte_size(content)} >>\nstream\n#{content}\nendstream",
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>"
+    ]
+
+    # The cross-reference table at the end gives each object's byte offset.
+    header = "%PDF-1.4\n"
+
+    {objects, xref_offset} =
+      objects
+      |> Enum.with_index(1)
+      |> Enum.map_reduce(byte_size(header), fn {object, i}, offset ->
+        object = "#{i} 0 obj\n#{object}\nendobj\n"
+        {{offset, object}, offset + byte_size(object)}
+      end)
+
+    count = length(objects) + 1
+
+    IO.iodata_to_binary([
+      header,
+      Enum.map(objects, fn {_offset, object} -> object end),
+      "xref\n0 #{count}\n0000000000 65535 f \n",
+      Enum.map(objects, fn {offset, _} ->
+        String.pad_leading("#{offset}", 10, "0") <> " 00000 n \n"
+      end),
+      "trailer\n<< /Size #{count} /Root 1 0 R >>\nstartxref\n#{xref_offset}\n%%EOF\n"
+    ])
   end
 end

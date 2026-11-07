@@ -21,11 +21,216 @@ end
 
 ## What you can do with it
 
-Hippy talks to any IPP printer directly, or to a CUPS server in front of them. Combined with Elixir's concurrency, that makes it easy to look after a whole fleet.
+Hippy talks to any IPP printer directly, or to a CUPS server in front of them. Most printers made in the last decade speak IPP over your network, usually at `ipp://<printer-address>/ipp/print`. To find yours, look in its network settings, or run `dns-sd -B _ipp._tcp` on a Mac or `avahi-browse -rt _ipp._tcp` on Linux.
+
+### Draw your ink levels in the terminal
+
+Printers report each cartridge's level and colour in `printer-supply`, as strings like `"type=toner;level=75;maxcapacity=100;colorantname=black;"`. Turn them into bars in the ink's own colour:
+
+```elixir
+defmodule MyApp.Ink do
+  alias Hippy.Operation.GetPrinterAttributes
+
+  @colors %{"black" => :light_black, "cyan" => :cyan, "magenta" => :magenta, "yellow" => :yellow}
+
+  def gauge(uri) do
+    with {:ok, res} <-
+           uri
+           |> GetPrinterAttributes.new(
+             requested_attributes: ["printer-supply", "printer-supply-description"]
+           )
+           |> Hippy.send_operation(timeout: 5_000) do
+      printer = Hippy.Message.printer(res)
+      names = Map.get(printer, "printer-supply-description", [])
+
+      printer
+      |> Map.get("printer-supply", [])
+      |> Enum.map(&parse/1)
+      |> Enum.with_index(fn supply, i -> bar(supply, Enum.at(names, i)) end)
+      |> Enum.join("\n")
+      |> then(&{:ok, &1})
+    end
+  end
+
+  # "type=toner;level=75;..." -> %{"type" => "toner", "level" => "75", ...}
+  defp parse(supply) do
+    supply
+    |> String.split(";", trim: true)
+    |> Map.new(&(&1 |> String.split("=", parts: 2) |> List.to_tuple()))
+  end
+
+  defp bar(supply, name) do
+    label = String.pad_trailing(name || supply["type"] || "supply", 18)
+
+    with {level, ""} when level >= 0 <- Integer.parse(supply["level"] || ""),
+         {max, ""} when max > 0 <- Integer.parse(supply["maxcapacity"] || "100") do
+      percent = min(div(level * 100, max), 100)
+      filled = div(percent, 5)
+      color = Map.get(@colors, supply["colorantname"], :white)
+      # A waste tank's level is how full it is, not how much is left.
+      full = if supply["class"] == "receptacleThatIsFilled", do: " full", else: ""
+
+      bar =
+        IO.ANSI.format(
+          [color, String.duplicate("█", filled), :reset] ++
+            [:faint, String.duplicate("░", 20 - filled), :reset]
+        )
+
+      "#{label} #{bar} #{percent}%#{full}"
+    else
+      _unknown -> "#{label} level unknown"
+    end
+  end
+end
+```
+
+```elixir
+{:ok, gauge} = MyApp.Ink.gauge("ipp://192.168.1.50/ipp/print")
+IO.puts(gauge)
+```
+
+```
+Black Toner        ███████████████░░░░░ 75%
+Toner Waste Tank   █████░░░░░░░░░░░░░░░ 25% full
+```
+
+### Print a full-page Mandelbrot set, using hardly any ink
+
+Hippy sends whatever bytes you give it, so you can write the PDF yourself. This one is a single page of ASCII art: the Mandelbrot set in 6-point Courier, 150 characters by 120 lines. To save ink it's light grey, and only the bands around the edge of the set are drawn, in the lightest characters. Most of the page stays blank.
+
+```elixir
+defmodule MyApp.Mandelbrot do
+  alias Hippy.Operation.{GetPrinterAttributes, PrintJob}
+
+  @columns 150
+  @rows 120
+  # Nothing for the set itself or the outer bands, then lighter to heavier characters.
+  @ramp ~c"     .,:;~-=+*"
+
+  def print(uri) do
+    with {:ok, res} <-
+           uri
+           |> GetPrinterAttributes.new(requested_attributes: ["document-format-supported"])
+           |> Hippy.send_operation(),
+         %{"document-format-supported" => formats} = Hippy.Message.printer(res),
+         true <- "application/pdf" in formats || {:error, :pdf_not_supported} do
+      uri
+      |> PrintJob.new(pdf(), document_format: "application/pdf", job_name: "Mandelbrot")
+      |> Hippy.send_operation()
+    end
+  end
+
+  def lines do
+    for row <- 0..(@rows - 1) do
+      for col <- 0..(@columns - 1), into: "" do
+        # The real axis runs down the page, so the set fills a tall sheet.
+        <<char(escape(0.55 - row * 2.6 / @rows, -0.975 + col * 1.95 / @columns))>>
+      end
+    end
+  end
+
+  # How many steps z = z² + c takes to escape, or :inside if it never does.
+  defp escape(re, im, zr \\ 0.0, zi \\ 0.0, n \\ 0)
+  defp escape(_re, _im, _zr, _zi, 80), do: :inside
+  defp escape(_re, _im, zr, zi, n) when zr * zr + zi * zi > 4, do: n
+
+  defp escape(re, im, zr, zi, n),
+    do: escape(re, im, zr * zr - zi * zi + re, 2 * zr * zi + im, n + 1)
+
+  defp char(:inside), do: ?\s
+  defp char(n), do: Enum.at(@ramp, min(n, length(@ramp) - 1))
+
+  # A one-page PDF: the lines in 6-point Courier, in light grey, on a Letter page.
+  def pdf do
+    text = lines() |> Enum.map_join("\n", &"(#{&1}) '")
+    content = "BT /F1 6 Tf 6 TL 0.55 g 36 762 Td\n#{text}\nET"
+
+    objects = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] " <>
+        "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+      "<< /Length #{byte_size(content)} >>\nstream\n#{content}\nendstream",
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>"
+    ]
+
+    # The cross-reference table at the end gives each object's byte offset.
+    header = "%PDF-1.4\n"
+
+    {objects, xref_offset} =
+      objects
+      |> Enum.with_index(1)
+      |> Enum.map_reduce(byte_size(header), fn {object, i}, offset ->
+        object = "#{i} 0 obj\n#{object}\nendobj\n"
+        {{offset, object}, offset + byte_size(object)}
+      end)
+
+    count = length(objects) + 1
+
+    IO.iodata_to_binary([
+      header,
+      Enum.map(objects, fn {_offset, object} -> object end),
+      "xref\n0 #{count}\n0000000000 65535 f \n",
+      Enum.map(objects, fn {offset, _} ->
+        String.pad_leading("#{offset}", 10, "0") <> " 00000 n \n"
+      end),
+      "trailer\n<< /Size #{count} /Root 1 0 R >>\nstartxref\n#{xref_offset}\n%%EOF\n"
+    ])
+  end
+end
+```
+
+```elixir
+MyApp.Mandelbrot.print("ipp://192.168.1.50/ipp/print")
+```
+
+Here's the whole page in miniature, every third line and every other character (`MyApp.Mandelbrot.lines()` returns it all):
+
+```
+               .......,,,,,,,,................,,,,,,,,.......
+           .,,~::,,,:;~+**-~=**~~::,,,,,,::~~**=~-**+~;:,,,::~,,.
+         .,********--****         **~;;~**         ****--********,.
+       ...,::~**                     **                     **~::,...
+     ....,,,:~-***                                        ***-~:,,,....
+   .....,,:;****                                            ****;:,,.....
+ .....,,::;~+*                                                *+~;::,,.....
+,,,:--*-~--=*                                                  *=--~-*--:,,
+*~;~-**     *                                                  *     **-~;~
++***                                                                    ***
+~~-***                                                                ***-~
+:::~****** **                                                  ** ******~::
+..,,;*~;~~-=*                                                  *=-~~;~*;,,.
+.....,,:::;-*                                                  *-;:::,,....
+  ....,,,::;-=**                                            **=-;::,,,....
+    ...,,,:;-**                                              **-;:,,,...
+      ...,:~**** ***                                    *** ****~:,...
+        ..,-=~*~~~=*                                    *=~~~*~=-,..
+          ..,,,,::;=**+* **                      ** *+**=;::,,,,..
+           ...,,,,,::;;;--=+********    ********+=--;;;::,,,,,...
+            .....,,,,::;;~~-=**              **=-~~;;::,,,,.....
+             ......,,,::;~-**                  **-~;::,,,......
+              ......,,::;-**                    **-;::,,......
+               ......,:-=**                      **=-:,......
+                .....,:;~-=**                  **=-~;:,.....
+                 ....,::;=**                    **=;::,....
+                  ..,,:;~*******            *******~;:,,..
+                    ,;-=*-;;~~******    ******~~;;-*=-;,
+                     .,,,,,::::~~+**    **+~~::::,,,,,.
+                      .......,:;+*++****++*+;:,.......
+                        .......,::;~=**=~;::,.......
+                          ......,,::~==~::,,......
+                             ....,,,;--;,,,....
+                               ..,,,;--;,,,..
+                                  .::--::.
+                                   ,:--:,
+                                   .,;;,.
+                                   ..::..
+                                    .,,.
+```
 
 ### Check a fleet of printers at once
 
-Ask every printer for its state at the same time. Each request gives up after five seconds, so one unplugged printer doesn't hold up the rest:
+With more than one printer, Elixir's concurrency makes it easy to look after them all. Ask every printer for its state at the same time. Each request gives up after five seconds, so one unplugged printer doesn't hold up the rest:
 
 ```elixir
 defmodule MyApp.Fleet do
