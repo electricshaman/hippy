@@ -14,7 +14,7 @@ Add `hippy` to your dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:hippy, "~> 0.5.0"}
+    {:hippy, "~> 0.6.0"}
   ]
 end
 ```

@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 (2026-11-07)
+
+Hippy now knows the IANA IPP registry: attributes can be given as plain names and values, any
+operation can be sent by name, and responses decode more consistently. IPP errors are returned
+as errors. See the breaking changes below before upgrading.
 
 ### Breaking changes
 
@@ -13,48 +17,36 @@
 - Attributes and collection members the IANA registry defines as sets (`1setOf`) are always
   lists in `AttributeGroup.to_map/1` and the `Hippy.Response` map helpers, even with a single
   value. For example `Hippy.Response.job(res)["job-state-reasons"]` is now `["none"]` rather
-  than `"none"`, and `finishings-col`'s `folding` member is a list of collections.
-  Before, the type depended on how many values the printer sent. Attributes the registry
-  doesn't know, and out-of-band values such as `:no_value`, are unchanged, and so are the
-  tuples in `Hippy.Response`'s fields.
+  than `"none"`, and `finishings-col`'s `folding` member is a list of collections. Before, the
+  type depended on how many values the printer sent. Attributes the registry doesn't know, and
+  out-of-band values such as `:no_value`, are unchanged, and so are the tuples in
+  `Hippy.Response`'s fields.
 - `Hippy.Response.printer_attributes` is now a list of groups, one per printer, like
   `job_attributes`. Responses with several printers, such as CUPS-Get-Printers, used to be
   flattened into one group, with each attribute's values combined into a list across printers,
   so there was no reliable way to tell which value belonged to which printer. Code reading
-  `printer_attributes` directly needs to take the first group (or use `Hippy.Response.printer/1`).
-  `AttributeGroup.to_map(res.printer_attributes)` still returns the first printer's map.
+  `printer_attributes` directly needs to take the first group, or use `Hippy.Response.printer/1`,
+  which now returns `nil` instead of an empty map when there is no printer, like
+  `Hippy.Response.job/1`. `AttributeGroup.to_map(res.printer_attributes)` still returns the
+  first printer's map.
 - Value tags Hippy doesn't know now decode as `{tag, name, bytes}`, keeping the tag number and
   raw bytes. Before, some were relabelled (e.g. as `:charset`, `:octet_string`, `:integer` or
   `:out_of_band`), which lost the tag. Values that don't fit their tag (e.g. an integer that
   isn't 4 bytes) are kept the same way.
-- `Hippy.Response.printer/1` returns `nil` instead of an empty map when there is no printer, like
-  `Hippy.Response.job/1`.
 
 ### Added
 
-- Documents can be streamed: Print-Job's document (and `Hippy.send_operation/4`'s `document:`)
-  can be an `Enumerable` of binaries such as a `File.stream!` stream, which is sent with chunked
-  transfer encoding as it's read instead of being loaded into memory. `Hippy.Encoder.encode/1` then
-  returns a stream.
-- `Hippy.send_operation/4` sends any operation, by name or id, with attributes as a map, e.g.
-  `Hippy.send_operation(uri, :validate_job, %{"copies" => 2})`. A job URI is sent as `job-uri`, CUPS's
-  server-wide operations have no `printer-uri`, and `target:` overrides either. It takes
-  `document:` and the same options as `send_operation/2`.
 - Every operation accepts `attributes:`, a map of attribute names to values, e.g.
   `%{"copies" => 2, "media-col" => %{"media-size" => %{...}}}`. Each attribute's syntax and
   group are worked out from the IANA registry and the operation (`Hippy.AttributeInference`):
   maps are collections, lists are sets, enums take atoms such as `:landscape`, and
   `{syntax, value}` gives the syntax explicitly. Explicit `operation_attributes:`,
   `job_attributes:` and `groups:` override them.
-- `Hippy.IPP.Enum.encode/2` encodes an enum value by attribute name.
-- `Hippy.IPP.Attributes` describes every attribute in the IANA IPP registry: its value types
-  (with ranges and length limits), whether it can have several values, the groups it belongs
-  to, whether it's deprecated or obsolete, and, for collections, its members.
-- `raw: true` on `Hippy.Decoder.decode/2`, `Hippy.send_operation/2` and
-  `Hippy.Server.send_request/3` returns the response exactly as it was sent: one tuple per
-  value, values as on the wire (enums and the status code as integers, URIs as strings, dates as
-  tuples, …) and collections as ordered member lists. `Hippy.Encoder.encode/1` accepts all of
-  these, and encoding a raw response's groups again gives the original bytes.
+- `Hippy.send_operation/4` sends any operation, by name or id, with attributes as a map, e.g.
+  `Hippy.send_operation(uri, :validate_job, %{"copies" => 2})`. A job URI is sent as `job-uri`,
+  CUPS's server-wide operations have no `printer-uri`, and `target:` overrides either. It takes
+  `document:` and the same options as `Hippy.send_operation/2`. Functions that send a request
+  are all named `send_*`; everything else is free of side effects.
 - Requests can carry other attribute groups: `Hippy.Request` has a `groups` field, an ordered
   list of `{tag, attributes}` (e.g. `{:printer_attributes, [...]}` for CUPS-Add-Modify-Printer,
   or one `{:subscription_attributes, [...]}` per subscription), encoded after the operation and
@@ -63,11 +55,22 @@
 - `Hippy.Operation.CupsGetPrinters`, `CupsGetClasses` and `CupsGetDefault`, for listing the
   printers and classes on a CUPS server and getting its default printer. They take the server's
   URI (e.g. `"ipp://localhost:631/"`) and CUPS's filters (`limit:`, `first_printer_name:`,
-  `printer_location:`, `printer_type:`/`printer_type_mask:`).
-- Operations addressed to the server rather than a printer: an operation with a `server_uri`
-  field instead of `printer_uri` is sent to that URI, and `Hippy.Request.new/4` leaves out the
-  `printer-uri` attribute for it.
+  `printer_location:`, `printer_type:`/`printer_type_mask:`). An operation with a `server_uri`
+  field instead of `printer_uri` is sent to the server, without a `printer-uri` attribute.
 - `Hippy.Response.printers/1` returns a map per printer.
+- Documents can be streamed: Print-Job's document (and `Hippy.send_operation/4`'s `document:`)
+  can be an `Enumerable` of binaries such as a `File.stream!` stream, which is sent with chunked
+  transfer encoding as it's read instead of being loaded into memory. `Hippy.Encoder.encode/1`
+  then returns a stream.
+- `raw: true` on `Hippy.Decoder.decode/2`, `Hippy.send_operation/2,4` and
+  `Hippy.Server.send_request/3` returns the response exactly as it was sent: one tuple per
+  value, values as on the wire (enums and the status code as integers, URIs as strings, dates as
+  tuples, …) and collections as ordered member lists. `Hippy.Encoder.encode/1` accepts all of
+  these, and encoding a raw response's groups again gives the original bytes.
+- `Hippy.IPP.Attributes` describes every attribute in the IANA IPP registry: its value types
+  (with ranges and length limits), whether it can have several values, the groups it belongs
+  to, whether it's deprecated or obsolete, and, for collections, its members.
+- `Hippy.IPP.Enum.encode/2` encodes an enum value by attribute name.
 
 ### Fixes
 
