@@ -117,6 +117,7 @@ defmodule Hippy.Integration.CupsTest do
           })
 
         assert reencoded == bin, "#{queue} didn't round-trip"
+        assert Hippy.Message.encode(Hippy.Message.decode(bin)) == bin
       end
 
       {:ok, raw} = Hippy.send_operation(GetPrinterAttributes.new(printer(http, "raw")), raw: true)

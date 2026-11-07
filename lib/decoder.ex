@@ -55,10 +55,9 @@ defmodule Hippy.Decoder do
       kept in separate fields, so the order between them isn't preserved.)
   """
   def decode(bin, opts \\ []) do
-    <<major::8-signed, minor::8-signed, status_code::16-signed, request_id::32-signed,
-      rest::binary>> = bin
-
-    {groups, data} = parse_groups(rest, [])
+    %{version: {major, minor}, code: status_code, request_id: request_id} = parsed = parse(bin)
+    groups = for {tag, attributes} <- parsed.groups, do: {group(tag), attributes}
+    data = parsed.data
 
     res = %Hippy.Response{
       version: %Hippy.IPPVersion{major: major, minor: minor},
@@ -73,6 +72,17 @@ defmodule Hippy.Decoder do
       %{res | status_code: decode_status_code(status_code)}
       |> put_groups(groups, &interpret_group/1, &combine_groups/1)
     end
+  end
+
+  @doc false
+  # The message exactly as sent: header fields, groups as {tag number, attribute tuples} with
+  # nil names for additional values, and the data. Used by Hippy.Message.
+  def parse(bin) do
+    <<major::8-signed, minor::8-signed, code::16-signed, request_id::32-signed, rest::binary>> =
+      bin
+
+    {groups, data} = parse_groups(rest, [])
+    %{version: {major, minor}, code: code, request_id: request_id, groups: groups, data: data}
   end
 
   defp decode_status_code(value) do
@@ -95,7 +105,7 @@ defmodule Hippy.Decoder do
 
   defp parse_groups(<<tag, bin::binary>>, acc) when tag in 0x00..0x0F do
     {attributes, rest} = parse_attributes(bin, [])
-    parse_groups(rest, [{group(tag), attributes} | acc])
+    parse_groups(rest, [{tag, attributes} | acc])
   end
 
   defp group(tag) when tag in 0x01..0x0A do
