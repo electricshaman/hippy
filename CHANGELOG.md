@@ -8,7 +8,8 @@
   (`0x05xx`) status, such as `:client_error_not_found`, is returned as
   `{:error, %Hippy.Error{status: ..., message: ..., response: ...}}` instead of
   `{:ok, %Hippy.Response{}}`. The error keeps the whole response. Successful statuses are still
-  `{:ok, response}`.
+  `{:ok, response}`, including `:successful_ok_ignored_or_substituted_attributes`, where the
+  printer ignored or changed some attributes (see `Hippy.Response.unsupported/1`).
 - Attributes and collection members the IANA registry defines as sets (`1setOf`) are always
   lists in `AttributeGroup.to_map/1` and the `Hippy.Response` map helpers, even with a single
   value. For example `Hippy.Response.job(res)["job-state-reasons"]` is now `["none"]` rather
@@ -31,12 +32,12 @@
 
 ### Added
 
-- Documents can be streamed: Print-Job's document (and `Hippy.request/4`'s `document:`) can be an
-  `Enumerable` of binaries such as a `File.stream!` stream, which is sent with chunked transfer
-  encoding as it's read instead of being loaded into memory. `Hippy.Encoder.encode/1` then
+- Documents can be streamed: Print-Job's document (and `Hippy.send_operation/4`'s `document:`)
+  can be an `Enumerable` of binaries such as a `File.stream!` stream, which is sent with chunked
+  transfer encoding as it's read instead of being loaded into memory. `Hippy.Encoder.encode/1` then
   returns a stream.
-- `Hippy.request/4` sends any operation, by name or id, with attributes as a map, e.g.
-  `Hippy.request(uri, :validate_job, %{"copies" => 2})`. A job URI is sent as `job-uri`, CUPS's
+- `Hippy.send_operation/4` sends any operation, by name or id, with attributes as a map, e.g.
+  `Hippy.send_operation(uri, :validate_job, %{"copies" => 2})`. A job URI is sent as `job-uri`, CUPS's
   server-wide operations have no `printer-uri`, and `target:` overrides either. It takes
   `document:` and the same options as `send_operation/2`.
 - Every operation accepts `attributes:`, a map of attribute names to values, e.g.

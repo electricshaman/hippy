@@ -1,4 +1,4 @@
-defmodule Hippy.RequestTest do
+defmodule Hippy.SendOperationTest do
   use ExUnit.Case
 
   @printer "ipp://localhost:631/printers/p"
@@ -27,7 +27,7 @@ defmodule Hippy.RequestTest do
 
   test "sends any operation by name, placing attributes by inference" do
     {:ok, _} =
-      Hippy.request(@printer, :validate_job, %{
+      Hippy.send_operation(@printer, :validate_job, %{
         "document-format" => "application/pdf",
         "copies" => 2
       })
@@ -49,7 +49,7 @@ defmodule Hippy.RequestTest do
 
   test "takes operation ids, documents and explicit attributes" do
     {:ok, _} =
-      Hippy.request(@printer, 0x0002, %{"job-name" => "Report"},
+      Hippy.send_operation(@printer, 0x0002, %{"job-name" => "Report"},
         document: "%PDF",
         job_attributes: [{:keyword, "x-acme-finish", "matte"}]
       )
@@ -62,7 +62,7 @@ defmodule Hippy.RequestTest do
   end
 
   test "CUPS server operations have no printer-uri" do
-    {:ok, _} = Hippy.request("ipp://localhost:631/", :cups_get_printers, %{"limit" => 2})
+    {:ok, _} = Hippy.send_operation("ipp://localhost:631/", :cups_get_printers, %{"limit" => 2})
 
     {path, req} = sent()
     assert path == "/"
@@ -75,7 +75,7 @@ defmodule Hippy.RequestTest do
   end
 
   test "job URIs are sent as job-uri" do
-    {:ok, _} = Hippy.request("ipp://localhost:631/jobs/12", :get_job_attributes)
+    {:ok, _} = Hippy.send_operation("ipp://localhost:631/jobs/12", :get_job_attributes, %{})
 
     {path, req} = sent()
     assert path == "/jobs/12"
@@ -84,14 +84,14 @@ defmodule Hippy.RequestTest do
   end
 
   test "the target can be given, or replaced by an attribute" do
-    {:ok, _} = Hippy.request(@printer, :get_printer_attributes, %{}, target: :server)
+    {:ok, _} = Hippy.send_operation(@printer, :get_printer_attributes, %{}, target: :server)
     {_path, req} = sent()
     refute "printer-uri" in names(req.operation_attributes)
 
     other = "ipp://localhost:631/printers/other"
 
     {:ok, _} =
-      Hippy.request("ipp://localhost:631/admin/", :cups_add_modify_printer, %{
+      Hippy.send_operation("ipp://localhost:631/admin/", :cups_add_modify_printer, %{
         "printer-uri" => other
       })
 
@@ -106,10 +106,10 @@ defmodule Hippy.RequestTest do
   test "documents can be streamed, and arrive as the same bytes" do
     chunks = for n <- 1..50, do: :binary.copy(<<n>>, 1000)
 
-    {:ok, _} = Hippy.request(@printer, :print_job, %{}, document: Stream.map(chunks, & &1))
+    {:ok, _} = Hippy.send_operation(@printer, :print_job, %{}, document: Stream.map(chunks, & &1))
     assert_received {:request, _, streamed}
 
-    {:ok, _} = Hippy.request(@printer, :print_job, %{}, document: Enum.join(chunks))
+    {:ok, _} = Hippy.send_operation(@printer, :print_job, %{}, document: Enum.join(chunks))
     assert_received {:request, _, binary}
 
     # Request ids differ; everything else is the same.
@@ -147,7 +147,9 @@ defmodule Hippy.RequestTest do
     document = Stream.map(1..3, &:binary.copy(<<?a + &1>>, 10_000))
 
     {:ok, _} =
-      Hippy.request("ipp://localhost:#{port}/printers/p", :print_job, %{}, document: document)
+      Hippy.send_operation("ipp://localhost:#{port}/printers/p", :print_job, %{},
+        document: document
+      )
 
     assert_received {:raw_request, request}
     [headers, _body] = String.split(request, "\r\n\r\n", parts: 2)
@@ -168,7 +170,7 @@ defmodule Hippy.RequestTest do
   end
 
   test "unknown operation names return an error" do
-    assert Hippy.request(@printer, :print_everything) ==
+    assert Hippy.send_operation(@printer, :print_everything, %{}) ==
              {:error, {:unknown_operation, :print_everything}}
 
     refute_received {:request, _, _}

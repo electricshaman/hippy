@@ -6,7 +6,11 @@ defmodule Hippy.Server do
 
   Returns `{:ok, %Hippy.Response{}}`, or `{:error, %Hippy.Error{}}` when the printer returns an
   IPP error (a client-error or server-error status, such as `:client_error_not_found`). The
-  error keeps the whole response. HTTP errors are `{:error, {:http_error, status, body}}`, and
+  error keeps the whole response.
+
+  `{:ok, response}` can still mean the printer ignored or changed some attributes it doesn't
+  support (status `:successful_ok_ignored_or_substituted_attributes`).
+  `Hippy.Response.unsupported/1` lists them. HTTP errors are `{:error, {:http_error, status, body}}`, and
   transport errors are Req's exceptions (e.g. `{:error, %Req.TransportError{}}`).
 
   The request is sent to the operation's `printer_uri`, or `server_uri` for operations addressed
@@ -48,9 +52,10 @@ defmodule Hippy.Server do
   ]
 
   @doc """
-  Sends any operation, by name or id, with attributes given as a map. See `Hippy.request/4`.
+  Sends any operation, by name or id, with attributes given as a map. See
+  `Hippy.send_operation/4`.
   """
-  def request(uri, operation, attributes \\ %{}, opts \\ []) do
+  def send_operation(uri, operation, attributes, opts \\ []) when is_binary(uri) do
     with {:ok, operation_id, name} <- operation_id(operation),
          {:ok, endpoint} <- endpoint(%{printer_uri: uri}, opts) do
       op =

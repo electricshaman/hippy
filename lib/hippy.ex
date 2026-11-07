@@ -1,20 +1,27 @@
 defmodule Hippy do
   @moduledoc """
-  IPP client API
+  IPP client API.
+
+  Functions that send a request over the network are named `send_*`. Everything else, such as
+  building operations (`Hippy.Operation.PrintJob.new/3`), encoding and decoding, and reading
+  responses (`Hippy.Response`), has no side effects.
   """
 
-  @doc "Sends an operation to a printer. See `Hippy.Server.send_operation/2` for the options."
+  @doc """
+  Sends an operation struct (such as `Hippy.Operation.PrintJob`) to a printer. See
+  `Hippy.Server.send_operation/2` for the options.
+  """
   defdelegate send_operation(op, opts \\ []), to: Hippy.Server
 
   @doc """
-  Sends any IPP operation, by name or id, with attributes given as a map.
+  Sends any IPP operation, by name or id, to a printer or server, with attributes given as a map.
 
-      Hippy.request("ipp://localhost:631/printers/p", :validate_job, %{
+      Hippy.send_operation("ipp://localhost:631/printers/p", :validate_job, %{
         "document-format" => "application/pdf",
         "copies" => 2
       })
 
-      Hippy.request("ipp://localhost:631/", :cups_get_printers, %{"limit" => 10})
+      Hippy.send_operation("ipp://localhost:631/", :cups_get_printers, %{"limit" => 10})
 
   `operation` is a name from `Hippy.IPP.Operation` (e.g. `:print_job`) or an operation id.
   Each attribute's syntax and group come from the IANA registry (see `Hippy.AttributeInference`).
@@ -40,7 +47,8 @@ defmodule Hippy do
     * `:charset` and `:language` - default to `"utf-8"` and `"en"`.
     * `:req_options`, `:endpoint` and `:raw`, as for `send_operation/2`.
 
-  Returns `{:error, {:unknown_operation, name}}` for an operation name Hippy doesn't know.
+  Returns the same results as `send_operation/2`, or `{:error, {:unknown_operation, name}}` for
+  an operation name Hippy doesn't know (in which case nothing is sent).
   """
-  defdelegate request(uri, operation, attributes \\ %{}, opts \\ []), to: Hippy.Server
+  defdelegate send_operation(uri, operation, attributes, opts \\ []), to: Hippy.Server
 end
