@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 (2026-11-07)
+
+Hippy can now follow printers as they change: `Hippy.stream_events/2` reports each change to a
+printer and its jobs, from any printer, and `examples/dashboard.exs` shows them live. There are
+operations for controlling jobs and printers, subscriptions and notifications, and a choice of
+IPP version. Nothing has been removed or changed incompatibly since 0.7.
 
 ### Added
 
@@ -26,6 +31,17 @@
   sent as 1.1 by default.
 - `Hippy.send_operation/4` accepts IANA's names `:create_printer_subscriptions` and
   `:create_job_subscriptions`. Responses still decode them to Hippy's earlier singular names.
+
+### Documentation
+
+- The README covers watching a printer, getting notified about events, controlling jobs and
+  printers, and choosing the IPP version.
+- It explains what CUPS's notifications don't report: a printer subscription isn't told about
+  jobs being held, released or canceled, and its printer events can carry
+  `printer-state-reasons` from before the change. `Hippy.stream_events/2` reads the current
+  state instead.
+- It explains that a CUPS job's `:completed` state means CUPS has sent the job on, not that the
+  pages have come out.
 
 ## 0.7.0 (2026-11-07)
 

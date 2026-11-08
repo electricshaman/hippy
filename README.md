@@ -11,7 +11,7 @@ Add `hippy` to your dependencies in `mix.exs`. It needs Elixir 1.15 or later.
 ```elixir
 def deps do
   [
-    {:hippy, "~> 0.7.0"}
+    {:hippy, "~> 0.8.0"}
   ]
 end
 ```
