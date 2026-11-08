@@ -1,5 +1,7 @@
 # Changelog
 
+## Unreleased
+
 ## 0.8.0 (2026-11-07)
 
 Hippy can now follow printers as they change: `Hippy.stream_events/2` reports each change to a
