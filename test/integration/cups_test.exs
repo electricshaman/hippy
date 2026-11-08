@@ -873,7 +873,22 @@ defmodule Hippy.Integration.CupsTest do
     defp event_names(events), do: Enum.map(events, & &1["notify-subscribed-event"])
 
     test "a printer subscription collects its events in order, and only new ones", ctx do
-      uri = printer(ctx.https, "raw")
+      # Its own queue, so no other test's jobs show up in its events.
+      name = "subscribed_#{System.unique_integer([:positive])}"
+      on_exit(fn -> docker(["exec", ctx.container, "lpadmin", "-x", name]) end)
+
+      container_exec(ctx.container, [
+        "lpadmin",
+        "-p",
+        name,
+        "-E",
+        "-v",
+        "file:///dev/null",
+        "-m",
+        "raw"
+      ])
+
+      uri = printer(ctx.https, name)
 
       id =
         uri
